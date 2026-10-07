@@ -45,8 +45,8 @@ type Event struct {
 	TreasuryHint     string  `json:"treasury_hint"`
 	Reference        string  `json:"reference"`
 	Description      string  `json:"description"`
-	CategoryID       int64   `json:"category_id"`       // chosen from the provided list, 0 if unsure
-	CategoryAltIDs   []int64 `json:"category_alt_ids"`  // other plausible categories from the list
+	CategoryID       int64   `json:"category_id"`      // chosen from the provided list, 0 if unsure
+	CategoryAltIDs   []int64 `json:"category_alt_ids"` // other plausible categories from the list
 	FXRate           string  `json:"fx_rate"`
 }
 

@@ -30,7 +30,9 @@ type Question struct {
 	Text     string   `json:"text"`
 	Options  []Option `json:"options,omitempty"`
 	FreeText bool     `json:"free_text,omitempty"`
-	Remember bool     `json:"remember,omitempty"` // offer "remember this answer"
+	Remember bool     `json:"remember,omitempty"`  // offer "remember this answer"
+	RuleKind string   `json:"rule_kind,omitempty"` // learning kind used when remembered
+	Key      string   `json:"key,omitempty"`       // learning pattern key when remembered
 }
 
 type EntryLine struct {
@@ -549,7 +551,7 @@ func (r *resolver) party(field, name, role string, required bool) (*tools.Party,
 		}
 		text = r.c.tr(fmt.Sprintf("I couldn't find %q among your parties. Which party is it?", name), fmt.Sprintf("«%s» را در طرف‌حساب‌ها پیدا نکردم. کدام طرف حساب است؟", name))
 	}
-	return nil, r.ask(Question{Field: field, Text: text, Options: opts, Remember: name != ""})
+	return nil, r.ask(Question{Field: field, Text: text, Options: opts, Remember: name != "", RuleKind: learning.PartyAlias, Key: name})
 }
 
 // ---------- projects ----------
@@ -701,7 +703,7 @@ func (r *resolver) treasury(ctx context.Context, field, kind string, cardHint st
 	if field == "source_account" {
 		text = r.c.tr("Which account was the money paid from?", "پول از کدام حساب پرداخت شد؟")
 	}
-	return nil, r.ask(Question{Field: field, Text: text, Options: opts, Remember: true})
+	return nil, r.ask(Question{Field: field, Text: text, Options: opts, Remember: true, RuleKind: learning.PaymentDefault, Key: field + ":" + kind})
 }
 
 func kindName(kind, lang string) string {
@@ -872,7 +874,7 @@ func (r *resolver) counterAccount(ctx context.Context, party *tools.Party) (*too
 				for _, c := range m.Conflict {
 					opts = append(opts, Option{Value: strconv.FormatInt(c.ID, 10), Label: c.Name})
 				}
-				return nil, r.ask(Question{Field: "counter_account", Text: r.c.tr("Your saved rules disagree about the account. Which one?", "قواعد ذخیره‌شده درباره حساب اختلاف دارند. کدام؟"), Options: opts, Remember: true})
+				return nil, r.ask(Question{Field: "counter_account", Text: r.c.tr("Your saved rules disagree about the account. Which one?", "قواعد ذخیره‌شده درباره حساب اختلاف دارند. کدام؟"), Options: opts, Remember: true, RuleKind: learning.EventAccount, Key: keys[0]})
 			}
 			if m != nil {
 				if a := byID(m.Result.ID); a != nil {
@@ -926,7 +928,7 @@ func (r *resolver) counterAccount(ctx context.Context, party *tools.Party) (*too
 	if r.ev.Type == EvOwnerCapital {
 		what = r.c.tr("this capital contribution", "این آورده سرمایه")
 	}
-	return nil, r.ask(Question{Field: "counter_account", Text: r.c.tr("Which account should "+what+" be credited to?", "این مبلغ را در کدام حساب برای "+what+" بستانکار کنم؟"), Options: opts, Remember: true})
+	return nil, r.ask(Question{Field: "counter_account", Text: r.c.tr("Which account should "+what+" be credited to?", "این مبلغ را در کدام حساب برای "+what+" بستانکار کنم؟"), Options: opts, Remember: true, RuleKind: learning.EventAccount, Key: keys[0]})
 }
 
 func (r *resolver) expense(ctx context.Context) error {
@@ -959,7 +961,7 @@ func (r *resolver) expense(ctx context.Context) error {
 			for _, c := range m.Conflict {
 				opts = append(opts, Option{Value: strconv.FormatInt(c.ID, 10), Label: c.Name})
 			}
-			return r.ask(Question{Field: "category", Text: r.c.tr("Your saved rules disagree about the category. Which one?", "قواعد ذخیره‌شده درباره دسته هزینه اختلاف دارند. کدام؟"), Options: opts, Remember: true})
+			return r.ask(Question{Field: "category", Text: r.c.tr("Your saved rules disagree about the category. Which one?", "قواعد ذخیره‌شده درباره دسته هزینه اختلاف دارند. کدام؟"), Options: opts, Remember: ev.Subject != "", RuleKind: learning.ExpenseCategory, Key: ev.Subject})
 		}
 		if m != nil {
 			if c, ok := cats[m.Result.ID]; ok {
@@ -1009,7 +1011,7 @@ func (r *resolver) expense(ctx context.Context) error {
 				opts = append(opts, Option{Value: strconv.FormatInt(id, 10), Label: cats[id].Name})
 			}
 		}
-		return r.ask(Question{Field: "category", Text: r.c.tr("Which expense category is this?", "این هزینه در کدام دسته است؟"), Options: opts, Remember: ev.Subject != ""})
+		return r.ask(Question{Field: "category", Text: r.c.tr("Which expense category is this?", "این هزینه در کدام دسته است؟"), Options: opts, Remember: ev.Subject != "", RuleKind: learning.ExpenseCategory, Key: ev.Subject})
 	}
 	if _, ok := r.p.Suggested["category"]; !ok {
 		r.p.Suggested["category"] = Choice{cat.ID, cat.Name}
@@ -1071,7 +1073,7 @@ func (r *resolver) expense(ctx context.Context) error {
 			{Value: "cash", Label: r.c.tr("Company cash box", "صندوق شرکت"), Recommended: rec == "cash"},
 			{Value: "personal", Label: r.c.tr("Someone paid personally (the company owes them)", "شخصی از جیب خود پرداخت کرد (شرکت بدهکار اوست)"), Recommended: rec == "personal"},
 		}
-		return r.ask(Question{Field: "paid_by", Text: r.c.tr("Who paid for this?", "این هزینه را چه کسی پرداخت کرد؟"), Options: opts, Remember: true})
+		return r.ask(Question{Field: "paid_by", Text: r.c.tr("Who paid for this?", "این هزینه را چه کسی پرداخت کرد؟"), Options: opts, Remember: true, RuleKind: learning.PaymentDefault, Key: "paid_by"})
 	}
 	r.p.Display.PaymentMethod = a.PaymentMethod
 	proj, err := r.project()
