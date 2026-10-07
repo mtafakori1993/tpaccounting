@@ -237,3 +237,15 @@ func TestInjectedDocumentFlagsFromDocumentText(t *testing.T) {
 		t.Fatal("injection in document must be flagged on the proposal")
 	}
 }
+
+func TestAdvanceUsesCustomerAdvancesAccount(t *testing.T) {
+	it := &Interpretation{Intent: "register", UserRequestedRegistration: true,
+		Event: Event{Type: EvCustomerAdvance, Counterparty: "Company X", Amount: "1000", Currency: "IRR", Date: "2025-10-07"}}
+	c := newCtx(t, it, nil)
+	c.Accounts = append(c.Accounts, tools.Account{ID: 600, Code: "3401", Name: "پیش‌دریافت از مشتریان", NameEn: "Customer advances", Type: "liability", IsActive: true, Postable: true})
+	c.Answers["dest_account"] = "2"
+	p, _ := Resolve(context.Background(), c)
+	if p.Tx == nil || p.Tx.CounterAccountID == nil || *p.Tx.CounterAccountID != 600 || *p.Tx.PartyID != 101 || p.Tx.AutoAllocate {
+		t.Fatalf("advance must credit the advances account with the party: %+v", p.Tx)
+	}
+}

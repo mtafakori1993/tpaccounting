@@ -738,6 +738,24 @@ func (r *resolver) treasuryTx(ctx context.Context) error {
 		}
 		a.PartyID = &party.ID
 		a.AutoAllocate = ev.Type == EvCustomerReceipt
+		if ev.Type == EvCustomerAdvance {
+			// An advance is a liability, not a settlement: use the company's own
+			// "customer advances" account when exactly one exists (party stays on the line).
+			var adv []tools.Account
+			for _, acc := range r.c.Accounts {
+				n := normalize.Text(acc.Name + " " + acc.NameEn)
+				if acc.IsActive && acc.Postable && acc.Type == "liability" && (strings.Contains(n, normalize.Text("پیش‌دریافت")) || strings.Contains(n, "پیش دریافت") || strings.Contains(n, "advance")) {
+					adv = append(adv, acc)
+				}
+			}
+			if len(adv) == 1 {
+				a.CounterAccountID = &adv[0].ID
+				a.AutoAllocate = false
+				r.p.Display.CounterAccount = adv[0].Code + " " + adv[0].Name
+			} else {
+				r.p.Notes = append(r.p.Notes, r.c.tr("No customer-advances account found; the advance stays as a credit on the customer's account.", "حساب پیش‌دریافت پیدا نشد؛ پیش‌دریافت به‌صورت بستانکاری در حساب مشتری می‌ماند."))
+			}
+		}
 	case EvSupplierPayment:
 		name := ev.Counterparty
 		if name == "" && r.x != nil {
@@ -890,7 +908,7 @@ func (r *resolver) counterAccount(ctx context.Context, party *tools.Party) (*too
 			}
 		}
 	}
-	typ, words := "liability", []string{"وام", "قرض", "تسهیلات", "شرکا", "سهامدار", "جاری", "loan", "borrow", "shareholder", "partner", "director"}
+	typ, words := "liability", []string{"وام", "قرض", "تسهیلات", "شرکا", "سهامدار", "جاری", "سایر حساب‌های پرداختنی", "loan", "borrow", "shareholder", "partner", "director", "other payables"}
 	if r.ev.Type == EvOwnerCapital {
 		typ, words = "equity", []string{"سرمایه", "شرکا", "جاری", "capital", "partner", "owner"}
 	}
@@ -901,7 +919,7 @@ func (r *resolver) counterAccount(ctx context.Context, party *tools.Party) (*too
 		}
 		n := normalize.Text(a.Name + " " + a.NameEn)
 		for _, w := range words {
-			if strings.Contains(n, w) {
+			if strings.Contains(n, normalize.Text(w)) {
 				cands = append(cands, a)
 				break
 			}
