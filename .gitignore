@@ -1,0 +1,9 @@
+.env
+node_modules/
+frontend/dist/
+backups/
+*.log
+.DS_Store
+/backend/server
+*.tsbuildinfo
+graphify-out/

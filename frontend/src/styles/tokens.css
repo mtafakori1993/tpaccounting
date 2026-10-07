@@ -1,0 +1,207 @@
+/*
+ * Design tokens. Brand palette (Tafakor Pardazan):
+ *   #021C25 #091E27 #0E3338 #053A3D #165A54 #91DA73 #69B437 #23643D #022C22
+ * Components only ever use the semantic tokens below, never raw colours.
+ */
+
+@font-face {
+  font-family: 'Vazir';
+  src: url('../assets/fonts/Vazir.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Vazir';
+  src: url('../assets/fonts/Vazir-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Vazir';
+  src: url('../assets/fonts/Vazir-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+
+:root {
+  /* Brand primitives */
+  --brand-abyss: #021c25;
+  --brand-night: #091e27;
+  --brand-deep: #0e3338;
+  --brand-pine: #053a3d;
+  --brand-teal: #165a54;
+  --brand-lime: #91da73;
+  --brand-green: #69b437;
+  --brand-forest: #23643d;
+  --brand-ink: #022c22;
+
+  /* Typography */
+  --font-family: 'Vazir', 'Tahoma', system-ui, sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 30px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+  --line-height: 1.6;
+  --line-height-tight: 1.3;
+
+  /* Spacing (Spectrum-like 4px grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+
+  /* Shape and size */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --control-height: 34px;
+  --control-height-sm: 28px;
+  --sidebar-width: 248px;
+  --header-height: 56px;
+  --focus-ring: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-focus);
+  --transition: 120ms ease-out;
+
+  /* Shell (deep brand chrome in both themes) */
+  --color-shell: var(--brand-abyss);
+  --color-shell-text: #c9dbd8;
+  --color-shell-text-strong: #ffffff;
+  --color-shell-hover: rgba(145, 218, 115, 0.08);
+  --color-shell-active: rgba(145, 218, 115, 0.14);
+  --color-shell-marker: var(--brand-lime);
+  --color-shell-muted: #7e9a97;
+}
+
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-background: #f2f6f5;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-surface-sunken: #e9efee;
+  --color-surface-hover: #f0f5f4;
+  --color-surface-selected: #e3f1e6;
+  --color-text: #0e2a2e;
+  --color-text-secondary: #4e6a6a;
+  --color-text-disabled: #9aaead;
+  --color-text-on-primary: #ffffff;
+  --color-border: #d5dfdd;
+  --color-border-strong: #a9bbb8;
+  --color-primary: #165a54;
+  --color-primary-hover: #0e3338;
+  --color-primary-pressed: #053a3d;
+  --color-accent: #69b437;
+  --color-focus: #69b437;
+  --color-link: #165a54;
+  --color-success: #23643d;
+  --color-success-bg: #e3f3df;
+  --color-warning: #8a5a00;
+  --color-warning-bg: #fdf1d8;
+  --color-danger: #b42318;
+  --color-danger-bg: #fdeceb;
+  --color-info: #135f8a;
+  --color-info-bg: #e5f2f9;
+  --color-neutral-bg: #e9efee;
+  --color-debit: #0e2a2e;
+  --color-credit: #165a54;
+  --shadow-overlay: 0 12px 32px rgba(2, 28, 37, 0.18), 0 2px 6px rgba(2, 28, 37, 0.08);
+  --shadow-raised: 0 1px 2px rgba(2, 28, 37, 0.06);
+  --backdrop: rgba(2, 28, 37, 0.45);
+  /* Chart series (validated for CVD and contrast): budget vs actual, plus the critical status. */
+  --chart-budget: #2a78d6;
+  --chart-actual: #1baf7a;
+  --chart-over: #d03b3b;
+  --chart-grid: #e3e9e8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --color-background: #021c25;
+    --color-surface: #091e27;
+    --color-surface-elevated: #0e3338;
+    --color-surface-sunken: #04171e;
+    --color-surface-hover: #0f2a31;
+    --color-surface-selected: #123a35;
+    --color-text: #e3eeec;
+    --color-text-secondary: #95b0ad;
+    --color-text-disabled: #557270;
+    --color-text-on-primary: #022c22;
+    --color-border: #1c3a40;
+    --color-border-strong: #2f5459;
+    --color-primary: #91da73;
+    --color-primary-hover: #a8e590;
+    --color-primary-pressed: #69b437;
+    --color-accent: #91da73;
+    --color-focus: #91da73;
+    --color-link: #91da73;
+    --color-success: #91da73;
+    --color-success-bg: #12362a;
+    --color-warning: #f2c46b;
+    --color-warning-bg: #3a2e12;
+    --color-danger: #ff8a80;
+    --color-danger-bg: #3d1a1a;
+    --color-info: #7cc4ec;
+    --color-info-bg: #0f2e3d;
+    --color-neutral-bg: #0f2a31;
+    --color-debit: #e3eeec;
+    --color-credit: #a8e590;
+    --shadow-overlay: 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --backdrop: rgba(0, 8, 12, 0.65);
+    --color-shell: #01141b;
+    --chart-budget: #3987e5;
+    --chart-actual: #199e70;
+    --chart-over: #e66767;
+    --chart-grid: #1c3a40;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-background: #021c25;
+  --color-surface: #091e27;
+  --color-surface-elevated: #0e3338;
+  --color-surface-sunken: #04171e;
+  --color-surface-hover: #0f2a31;
+  --color-surface-selected: #123a35;
+  --color-text: #e3eeec;
+  --color-text-secondary: #95b0ad;
+  --color-text-disabled: #557270;
+  --color-text-on-primary: #022c22;
+  --color-border: #1c3a40;
+  --color-border-strong: #2f5459;
+  --color-primary: #91da73;
+  --color-primary-hover: #a8e590;
+  --color-primary-pressed: #69b437;
+  --color-accent: #91da73;
+  --color-focus: #91da73;
+  --color-link: #91da73;
+  --color-success: #91da73;
+  --color-success-bg: #12362a;
+  --color-warning: #f2c46b;
+  --color-warning-bg: #3a2e12;
+  --color-danger: #ff8a80;
+  --color-danger-bg: #3d1a1a;
+  --color-info: #7cc4ec;
+  --color-info-bg: #0f2e3d;
+  --color-neutral-bg: #0f2a31;
+  --color-debit: #e3eeec;
+  --color-credit: #a8e590;
+  --shadow-overlay: 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --backdrop: rgba(0, 8, 12, 0.65);
+  --color-shell: #01141b;
+  --chart-budget: #3987e5;
+  --chart-actual: #199e70;
+  --chart-over: #e66767;
+  --chart-grid: #1c3a40;
+}
