@@ -23,7 +23,7 @@ func (nopAI) Complete(context.Context, provider.Request) (provider.Result, error
 	return provider.Result{}, provider.ErrNotConfigured
 }
 func (nopAI) Health(context.Context) error { return provider.ErrNotConfigured }
-func (nopAI) DefaultModel() string          { return "m" }
+func (nopAI) DefaultModel() string         { return "m" }
 
 func fakeAccounting(t *testing.T, calls *atomic.Int32) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

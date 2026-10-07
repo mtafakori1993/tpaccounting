@@ -25,7 +25,9 @@ func UserFrom(ctx context.Context) *User {
 	return u
 }
 
-func WithUser(ctx context.Context, u *User) context.Context { return context.WithValue(ctx, userKey{}, u) }
+func WithUser(ctx context.Context, u *User) context.Context {
+	return context.WithValue(ctx, userKey{}, u)
+}
 
 // csrfValid implements the same double-submit check as the accounting app.
 func csrfValid(r *http.Request) bool {

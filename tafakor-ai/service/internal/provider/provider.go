@@ -41,7 +41,9 @@ type Message struct {
 	Content []Part `json:"content"`
 }
 
-func Text(role, s string) Message { return Message{Role: role, Content: []Part{{Type: "text", Text: s}}} }
+func Text(role, s string) Message {
+	return Message{Role: role, Content: []Part{{Type: "text", Text: s}}}
+}
 
 type Request struct {
 	Model       string

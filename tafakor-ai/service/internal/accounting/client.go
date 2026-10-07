@@ -55,7 +55,9 @@ type APIError struct {
 	Params  map[string]any    `json:"params,omitempty"`
 }
 
-func (e *APIError) Error() string { return fmt.Sprintf("accounting %d %s: %s", e.Status, e.Code, e.Message) }
+func (e *APIError) Error() string {
+	return fmt.Sprintf("accounting %d %s: %s", e.Status, e.Code, e.Message)
+}
 
 func AsAPIError(err error) (*APIError, bool) {
 	var e *APIError
