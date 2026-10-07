@@ -1,0 +1,8 @@
+.env
+widget/node_modules/
+widget/dist/
+service/aiservice
+*.db
+*.db-wal
+*.db-shm
+test-artifacts/

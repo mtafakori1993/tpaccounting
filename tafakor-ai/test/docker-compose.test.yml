@@ -1,0 +1,76 @@
+# THROWAWAY test stack for Tafakor AI (demo data only). Own project name, images,
+# ports and volumes — it never touches the real "tpaccounting" stack or its image tag.
+#
+#   tafakor-ai/test/stack.sh up | down | reset
+name: tpai-test
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tpaccounting
+      POSTGRES_USER: tpaccounting
+      POSTGRES_PASSWORD: test-only-password
+    volumes: [testpg:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tpaccounting -d tpaccounting"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    networks: [internal]
+
+  app:
+    build:
+      context: ../..
+      network: host
+      args:
+        HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
+        HTTPS_PROXY: ${BUILD_HTTP_PROXY:-}
+    image: tpai-test-app:latest
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DB_HOST: db
+      DB_NAME: tpaccounting
+      DB_USER: tpaccounting
+      DB_PASSWORD: test-only-password
+      SESSION_SECRET: test-only-session-secret-0123456789abcdef
+      APP_PORT: 8085
+      COOKIE_SECURE: "false"
+      LOGIN_RATE_LIMIT_PER_MINUTE: 1000
+      STORAGE_DIR: /data/attachments
+      AI_SERVICE_URL: ${TEST_AI_SERVICE_URL-http://tafakor-ai:8090}
+    ports: ["127.0.0.1:${TEST_APP_PORT:-18085}:8085"]
+    volumes: [testattachments:/data/attachments]
+    networks: [internal]
+
+  tafakor-ai:
+    build:
+      context: ..
+      network: host
+      args:
+        HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
+        HTTPS_PROXY: ${BUILD_HTTP_PROXY:-}
+    image: tpai-test-ai:latest
+    profiles: ["ai"]
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      AI_ACCOUNTING_URL: http://app:8085
+      OPENROUTER_PROXY_URL: ${TEST_OPENROUTER_PROXY_URL:-http://host.docker.internal:8118}
+      AI_RATE_LIMIT_PER_MINUTE: 600
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: ["127.0.0.1:${TEST_AI_PORT:-18090}:8090"]
+    volumes: [testaidata:/data]
+    networks:
+      internal:
+        aliases: [tafakor-ai]
+
+volumes:
+  testpg:
+  testattachments:
+  testaidata:
+
+networks:
+  internal:

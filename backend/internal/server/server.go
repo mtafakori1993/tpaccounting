@@ -42,7 +42,7 @@ func New(cfg config.Config, pool *pgxpool.Pool, store storage.Storage) http.Hand
 	// Budget control runs inside every posting transaction.
 	ledger.OnPost = budgets.Control
 	r := chi.NewRouter()
-	r.Use(recoverer, logRequests, securityHeaders(cfg.CookieSecure), cors(cfg.AllowedOrigins), authSvc.Meta)
+	r.Use(recoverer, logRequests, securityHeaders(cfg.CookieSecure, cfg.AIServiceURL != ""), cors(cfg.AllowedOrigins), authSvc.Meta)
 
 	r.Get("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		if err := pool.Ping(req.Context()); err != nil {
@@ -102,6 +102,7 @@ func New(cfg config.Config, pool *pgxpool.Pool, store storage.Storage) http.Hand
 		api.NotFound(func(w http.ResponseWriter, req *http.Request) { httpx.Error(w, req, apperr.NotFound("route")) })
 	})
 
+	r.Handle("/ai-api/*", aiProxy(cfg.AIServiceURL)) // Tafakor AI touchpoint (b)
 	r.Handle("/*", spa(cfg.StaticDir))
 	return r
 }

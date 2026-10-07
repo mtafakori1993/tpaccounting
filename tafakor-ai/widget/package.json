@@ -1,0 +1,17 @@
+{
+  "name": "tafakor-ai-widget",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "happy-dom": "^17.6.3",
+    "typescript": "5.8",
+    "vitest": "^3.2.7"
+  }
+}

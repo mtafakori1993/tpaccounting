@@ -24,6 +24,7 @@ type Config struct {
 	LoginRateLimit int // attempts per minute per IP
 	TrustProxy     bool
 	ChromePath     string
+	AIServiceURL   string // Tafakor AI add-on; empty disables the /ai-api route
 }
 
 func Load() (Config, error) {
@@ -39,6 +40,7 @@ func Load() (Config, error) {
 		LoginRateLimit: envInt("LOGIN_RATE_LIMIT_PER_MINUTE", 10),
 		TrustProxy:     envBool("TRUST_PROXY", false),
 		ChromePath:     os.Getenv("CHROME_PATH"),
+		AIServiceURL:   strings.TrimSpace(os.Getenv("AI_SERVICE_URL")),
 	}
 	if o := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")); o != "" {
 		for _, s := range strings.Split(o, ",") {

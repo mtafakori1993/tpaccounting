@@ -1,0 +1,57 @@
+# Tafakor AI add-on. Runs next to the accounting stack and joins its network.
+#
+#   cp tafakor-ai/.env.example tafakor-ai/.env      # fill in OPENROUTER_API_KEY
+#   docker compose -f tafakor-ai/docker-compose.ai.yml --env-file tafakor-ai/.env up -d --build
+#   # then set AI_SERVICE_URL=http://tafakor-ai:8090 in the main .env and `docker compose up -d app`
+#
+# Remove completely: docker compose -f tafakor-ai/docker-compose.ai.yml down -v   (deletes only AI data)
+name: tafakor-ai
+
+services:
+  tafakor-ai:
+    build:
+      context: .
+      network: host
+      args:
+        HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
+        HTTPS_PROXY: ${BUILD_HTTP_PROXY:-}
+    image: tafakor-ai:latest
+    restart: unless-stopped
+    environment:
+      AI_PORT: 8090
+      # The accounting app on the shared network. Always called directly, never through a proxy.
+      AI_ACCOUNTING_URL: ${AI_ACCOUNTING_URL:-http://app:8085}
+      AI_NO_PROXY: ${AI_NO_PROXY:-localhost,127.0.0.1,app,db,tafakor-ai}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-anthropic/claude-sonnet-4.6}
+      OPENROUTER_VISION_MODEL: ${OPENROUTER_VISION_MODEL:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      # The proxy on the HOST (port 8118). Inside Docker "localhost" is the container itself,
+      # so the host is reached as host.docker.internal (mapped below to the host gateway).
+      OPENROUTER_PROXY_URL: ${OPENROUTER_PROXY_URL:-http://host.docker.internal:8118}
+      SPEECH_BASE_URL: ${SPEECH_BASE_URL:-}
+      SPEECH_API_KEY: ${SPEECH_API_KEY:-}
+      SPEECH_MODEL: ${SPEECH_MODEL:-whisper-1}
+      SPEECH_PROXY_URL: ${SPEECH_PROXY_URL:-http://host.docker.internal:8118}
+      AI_TTS_ENABLED: ${AI_TTS_ENABLED:-false}
+      AI_COMPANY_LOCK_AUTO: ${AI_COMPANY_LOCK_AUTO:-false}
+      AI_AUDIT_RETENTION_DAYS: ${AI_AUDIT_RETENTION_DAYS:-365}
+      AI_RATE_LIMIT_PER_MINUTE: ${AI_RATE_LIMIT_PER_MINUTE:-30}
+      AI_APPROVAL_TTL_SECONDS: ${AI_APPROVAL_TTL_SECONDS:-600}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+      TZ: ${TZ:-Asia/Tehran}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ai-data:/data
+    networks:
+      accounting:
+        aliases: [tafakor-ai]
+
+volumes:
+  ai-data:
+
+networks:
+  accounting:
+    external: true
+    name: ${ACCOUNTING_NETWORK:-tpaccounting_internal}

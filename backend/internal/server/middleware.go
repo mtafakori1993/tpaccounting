@@ -45,14 +45,19 @@ func recoverer(next http.Handler) http.Handler {
 	})
 }
 
-func securityHeaders(hsts bool) func(http.Handler) http.Handler {
+func securityHeaders(hsts, ai bool) func(http.Handler) http.Handler {
+	// Tafakor AI touchpoint (c): push-to-talk needs the microphone on this origin.
+	permissions := "camera=(), microphone=(), geolocation=()"
+	if ai {
+		permissions = "camera=(), microphone=(self), geolocation=()"
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := w.Header()
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("X-Frame-Options", "DENY")
 			h.Set("Referrer-Policy", "same-origin")
-			h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+			h.Set("Permissions-Policy", permissions)
 			h.Set("Cross-Origin-Opener-Policy", "same-origin")
 			if h.Get("Content-Security-Policy") == "" {
 				h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "+

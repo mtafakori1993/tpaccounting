@@ -55,6 +55,8 @@ services:
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
       STORAGE_DIR: /data/attachments
       TZ: ${TZ:-Asia/Tehran}
+      # Tafakor AI add-on (optional): e.g. http://tafakor-ai:8090; empty = disabled.
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-}
     ports:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8085}:${APP_PORT:-8085}"
     volumes:
