@@ -65,7 +65,7 @@ func run() error {
 	go retention(ctx, st, cfg.AuditRetention)
 
 	hs := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.Port),
+		Addr:              fmt.Sprintf("%s:%d", cfg.Bind, cfg.Port),
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       2 * time.Minute,

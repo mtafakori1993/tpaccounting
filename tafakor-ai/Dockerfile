@@ -11,6 +11,9 @@ COPY widget/ ./
 RUN npm run build
 
 FROM golang:1.26-alpine AS api
+# Module mirror is configurable (some networks are refused by proxy.golang.org).
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
 WORKDIR /src
 COPY service/go.mod service/go.sum ./
 RUN go mod download \

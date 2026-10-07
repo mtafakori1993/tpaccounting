@@ -42,6 +42,7 @@ services:
       AI_SERVICE_URL: ${TEST_AI_SERVICE_URL-http://tafakor-ai:8090}
     ports: ["127.0.0.1:${TEST_APP_PORT:-18085}:8085"]
     volumes: [testattachments:/data/attachments]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     networks: [internal]
 
   tafakor-ai:
@@ -51,6 +52,7 @@ services:
       args:
         HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
         HTTPS_PROXY: ${BUILD_HTTP_PROXY:-}
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
     image: tpai-test-ai:latest
     profiles: ["ai"]
     env_file:

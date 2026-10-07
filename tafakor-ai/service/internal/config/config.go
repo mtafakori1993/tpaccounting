@@ -21,6 +21,7 @@ type Provider struct {
 
 type Config struct {
 	Port            int
+	Bind            string // listen address; empty = all interfaces (inside Docker)
 	AccountingURL   string // internal base URL of the accounting app, e.g. http://app:8085
 	DataDir         string // SQLite file and uploads live here (own Docker volume)
 	WidgetDir       string // built widget bundle
@@ -42,6 +43,7 @@ type Config struct {
 func Load() (Config, error) {
 	c := Config{
 		Port:          envInt("AI_PORT", 8090),
+		Bind:          os.Getenv("AI_BIND"),
 		AccountingURL: strings.TrimRight(env("AI_ACCOUNTING_URL", "http://app:8085"), "/"),
 		DataDir:       env("AI_DATA_DIR", "/data"),
 		WidgetDir:     env("AI_WIDGET_DIR", "/app/widget"),

@@ -33,3 +33,19 @@ Branch: `feature/tafakor-ai` (never pushed, never merged by the agent).
 
 ## Status
 (updated after each phase below)
+
+### Phase 1 — Skeleton and isolation: DONE
+- `tafakor-ai/service`: Go module (own go.mod), health (`/ai-api/healthz`), provider health, session validation via
+  `GET /api/v1/auth/me` on every request, CSRF double-submit check, per-user rate limit, SQLite (WAL) behind
+  `store.Repository` with all required tables, proxy-aware provider client, direct (never proxied) accounting client.
+- Core touchpoints behind `AI_SERVICE_URL`: (a) loader `<script>` in `frontend/index.html`, (b) `/ai-api/*` reverse proxy
+  in the Go server (SSE flush, extended write deadline), (c) `Permissions-Policy: microphone=(self)` only when enabled.
+- `docker-compose.ai.yml`, `Dockerfile`, `.env.example`; throwaway stack `test/docker-compose.test.yml` (project `tpai-test`,
+  ports 18085/18090, own volumes and image tags) + `test/seed_demo.py` demo company.
+- Tests green: store (defaults, scoping, approval single-use/expiry/tamper, retention, task isolation), netx (bypass,
+  env-proxy ignored), provider (SSE through a forwarding proxy without buffering, proxy-unreachable safe stop with no
+  direct fallback, no credential leaks, bounded retries), httpapi (session per request, CSRF, rate limit), core
+  `aiproxy_test.go` (disabled = harmless, streaming, microphone header).
+- Removal verified by `tafakor-ai/verify-removal.sh` (worktree: remove touchpoints + folder → tree identical to `main`,
+  backend builds and tests pass, frontend builds).
+- Live check: test core → `/ai-api` → AI container works. The host proxy rejects Docker subnets (D11).

@@ -35,3 +35,15 @@ the original amount/currency/rate into the description. Alternative: refuse FX. 
 
 D10. **OpenRouter key handling.** Provided at runtime by the user; stored only in the gitignored `tafakor-ai/.env`,
 never in code, docs, logs or commits.
+
+D11. **Host proxy refuses Docker subnets (found during testing).** The proxy on host port 8118 answers
+`403 Forbidden` to CONNECT requests coming from Docker bridge networks (172.x) and works from 127.0.0.1, i.e. it
+has a source-address ACL. The compose file still targets `host.docker.internal:8118` as required; the operator must
+allow the Docker subnet in the proxy (e.g. privoxy `permit-access 172.16.0.0/12`) — listed under "Needs human
+verification". The agent did not change the host proxy. Live model tests were run with the service binary on the host
+(`test/run-host-ai.sh`, bound to the docker0 address only), which really goes through 127.0.0.1:8118.
+Alternatives: `network_mode: host` for the container, or a TCP relay. Rejected: they would change production
+networking or work around the proxy's access control.
+
+D12. **GOPROXY build argument.** proxy.golang.org returns 403 for some modules from this network; the AI image takes
+`GOPROXY` as a build arg (default proxy.golang.org) so operators can use a mirror (tests used goproxy.cn).
