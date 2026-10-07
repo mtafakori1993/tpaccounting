@@ -105,6 +105,7 @@ export function DataTable<T>({ columns, rows, rowKey, loading, error, onRetry, o
             {rows?.map((r, i) => (
               <tr
                 key={rowKey(r, i)}
+                data-ai-row-id={rowKey(r, i)}
                 className={`${onRowClick ? 'clickable' : ''} ${rowClassName?.(r) ?? ''}`}
                 onClick={onRowClick ? () => onRowClick(r) : undefined}
                 onKeyDown={onRowClick ? (e) => e.key === 'Enter' && onRowClick(r) : undefined}

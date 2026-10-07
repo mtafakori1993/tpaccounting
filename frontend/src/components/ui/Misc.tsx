@@ -139,7 +139,7 @@ export function Tabs<K extends string>({ tabs, value, onChange, label }: { tabs:
   return (
     <div className="tabs" role="tablist" aria-label={label} onKeyDown={onKey}>
       {tabs.map((tb) => (
-        <button key={tb.key} data-key={tb.key} role="tab" type="button" className="tab" aria-selected={value === tb.key} tabIndex={value === tb.key ? 0 : -1} onClick={() => onChange(tb.key)}>
+        <button key={tb.key} data-key={tb.key} data-ai-tab={tb.key} role="tab" type="button" className="tab" aria-selected={value === tb.key} tabIndex={value === tb.key ? 0 : -1} onClick={() => onChange(tb.key)}>
           {tb.label}
           {tb.count !== undefined && tb.count !== null && <span className={`tab-count ${tb.tone ?? ''}`}>{tb.count}</span>}
         </button>

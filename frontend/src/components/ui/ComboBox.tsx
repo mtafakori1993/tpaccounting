@@ -164,6 +164,7 @@ export function ComboBox({ value, valueLabel, onChange, search, recent, placehol
             <div
               key={o.id}
               role="option"
+              data-ai-option-id={o.id}
               aria-selected={i === active}
               aria-disabled={o.disabled}
               className="option"

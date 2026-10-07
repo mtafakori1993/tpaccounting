@@ -31,6 +31,14 @@ function lookup(dict: Dictionary, key: string): string | undefined {
   return typeof cur === 'string' ? cur : undefined;
 }
 
+// Tafakor AI tag: the most recent i18n key that produced each text, so shared
+// components can derive language-independent data-ai-* tags from their labels.
+const keyByText = new Map<string, string>();
+/** Returns the i18n key a visible text came from (undefined for data). */
+export function aiKeyOf(text: string): string | undefined {
+  return keyByText.get(text);
+}
+
 function interpolate(s: string, params?: Params) {
   if (!params) return s;
   return s.replace(/\{(\w+)\}/g, (_, k) => (params[k] === undefined || params[k] === null ? '' : String(params[k])));
@@ -69,7 +77,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const dict = dictionaries[lang];
     const tryT = (key: string, params?: Params) => {
       const s = lookup(dict, key) ?? lookup(en, key);
-      return s === undefined ? undefined : interpolate(s, params);
+      if (s === undefined) return undefined;
+      const out = interpolate(s, params);
+      keyByText.set(out, key);
+      return out;
     };
     return { lang, dir, setLang, tryT, t: (key, params) => tryT(key, params) ?? key };
   }, [lang, dir, setLang]);

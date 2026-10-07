@@ -98,6 +98,7 @@ func (h *HTTP) Register(mux *http.ServeMux, auth func(http.Handler) http.Handler
 	handle("DELETE /ai-api/rules/{id}", h.deleteRule)
 	handle("DELETE /ai-api/aliases/{id}", h.deleteAlias)
 	handle("GET /ai-api/audit", h.audit)
+	handle("POST /ai-api/ui/locate", h.locate)
 }
 
 // sse runs fn with a server-sent-event emitter and a bounded task budget.

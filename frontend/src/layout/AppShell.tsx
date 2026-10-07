@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { aiPage, startAiTagger } from '@/components/ui/aiTags';
 import {
   ArrowLeftRight, BarChart3, BookOpen, Boxes, Building2, CalendarRange, ClipboardList, FileClock, FileMinus, FileText,
   Landmark, LayoutDashboard, ListTree, LogOut, Menu, Moon, Package, Receipt, Settings2, Shield, ShoppingCart, Sun,
@@ -141,7 +142,7 @@ function NavSection({ item, can }: { item: NavItem; can: (p: string) => boolean 
       {open && (
         <div id={id} className="nav-children">
           {children.map((c) => (
-            <NavLink key={c.to} to={c.to} end={c.end} className={({ isActive }) => `nav-link nav-sub ${isActive ? 'active' : ''}`}>
+            <NavLink key={c.to} to={c.to} end={c.end} data-ai-nav={c.to} className={({ isActive }) => `nav-link nav-sub ${isActive ? 'active' : ''}`}>
               <span>{t(c.label)}</span>
             </NavLink>
           ))}
@@ -193,6 +194,7 @@ export function AppShell() {
   const [navOpen, setNavOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  useEffect(() => startAiTagger(), []); // Tafakor AI tags for plain elements (harmless data attributes)
   useEffect(() => setNavOpen(false), [location.pathname]);
 
   const companyName = lang === 'en' && me?.company.name_en ? me.company.name_en : me?.company.name;
@@ -201,7 +203,7 @@ export function AppShell() {
     <div className={`shell ${navOpen ? 'nav-open' : ''}`}>
       <a href="#main" className="visually-hidden">{t('common.skipToContent')}</a>
       <aside className="sidebar" aria-label={t('common.menu')}>
-        <NavLink to="/" className="brand">
+        <NavLink to="/" className="brand" data-ai-nav="/">
           <img src={logo} alt="" />
           <span>
             <span className="brand-name">{t('app.name')}</span>
@@ -219,7 +221,7 @@ export function AppShell() {
                 {items.map((i) => (i.children ? (
                   <NavSection key={i.to} item={i} can={can} />
                 ) : (
-                  <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                  <NavLink key={i.to} to={i.to} end={i.end} data-ai-nav={i.to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                     {i.icon}
                     <span>{t(i.label)}</span>
                   </NavLink>
@@ -257,7 +259,7 @@ export function AppShell() {
             />
           </span>
         </header>
-        <main id="main" className="grow">
+        <main id="main" className="grow" data-ai-page={aiPage(location.pathname)}>
           <ErrorBoundary resetKey={location.pathname}>
             <Suspense fallback={<LoadingBlock />}>
               <Outlet />
