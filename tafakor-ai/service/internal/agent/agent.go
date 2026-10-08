@@ -320,6 +320,16 @@ func (a *Agent) register(ctx context.Context, u *User, t *store.Task, st *State,
 		return
 	}
 	st.Proposal = p
+	if tool, ok := a.Tools.Get(p.Action); ok && p.Action != "" {
+		for _, perm := range tool.Permissions {
+			if !u.Me.Can(perm) {
+				a.audit(ctx, u, t.ID, "policy", map[string]any{"decision": "blocked", "missing_permission": perm})
+				a.stop(ctx, u, t, st, e, tr(st.Lang, "You don't have permission to do this in the accounting app ("+perm+"), so I can't do it either.",
+					"شما در نرم‌افزار حسابداری مجوز این کار را ندارید ("+perm+")، پس من هم نمی‌توانم انجام دهم."))
+				return
+			}
+		}
+	}
 	if p.Stop != "" {
 		a.stop(ctx, u, t, st, e, p.Stop)
 		return
@@ -580,7 +590,7 @@ func (a *Agent) plain(lang string, err error) string {
 	if err == nil {
 		return ""
 	}
-	if errors.Is(err, provider.ErrNotConfigured) || errors.Is(err, provider.ErrProxy) || errors.Is(err, provider.ErrAuth) ||
+	if errors.Is(err, provider.ErrNotConfigured) || errors.Is(err, provider.ErrProxy) || errors.Is(err, provider.ErrAuth) || errors.Is(err, provider.ErrRejected) ||
 		errors.Is(err, provider.ErrRateLimited) || errors.Is(err, provider.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded) {
 		msg := provider.PlainMessage(err)
 		if lang == "fa" {

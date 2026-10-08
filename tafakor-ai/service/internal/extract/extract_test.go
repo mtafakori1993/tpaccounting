@@ -80,3 +80,16 @@ func TestSummaryContainsNoRawCard(t *testing.T) {
 		t.Fatal("full card number leaked")
 	}
 }
+
+func TestSecondReadingDisagreementFlagsAmount(t *testing.T) {
+	x, _ := Parse(`{"amount":{"value":"۱۲۵,۰۰۰,۰۰۰","confidence":0.99}}`)
+	CrossCheckAmount(x, `{"amount":"۱۲۰٬۰۰۰٬۰۰۰"}`)
+	if !x.Amount.Low() || len(x.LowFields) != 1 || x.LowFields[0] != "amount" {
+		t.Fatalf("disagreeing readings must force confirmation: %+v %v", x.Amount, x.LowFields)
+	}
+	y, _ := Parse(`{"amount":{"value":"120000000","confidence":0.99}}`)
+	CrossCheckAmount(y, `{"amount":"120,000,000"}`)
+	if y.Amount.Low() {
+		t.Fatal("agreeing readings must stay confident")
+	}
+}

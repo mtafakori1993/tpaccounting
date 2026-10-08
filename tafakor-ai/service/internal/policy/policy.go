@@ -92,10 +92,6 @@ func Decide(in Input) Decision {
 		d.Mode = Blocked
 		return d
 	}
-	if f.PeriodBlocked {
-		// Not executable at all until the period is opened; a human must decide.
-		add("period_locked", false, "")
-	}
 	add("auto_switch_on", s.AutoMode, "")
 	add("company_allows_auto", !in.CompanyLock, "")
 	add("not_asked_this_time", !in.AskThisTime, "")

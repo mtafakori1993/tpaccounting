@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -109,6 +110,14 @@ func (h *HTTP) sse(fn func(ctx context.Context, u *User, r *http.Request, e Emit
 		if budget == 0 {
 			budget = 5 * time.Minute
 		}
+		// Read the (small) JSON body BEFORE writing the stream headers: on HTTP/1.1 the
+		// server may close the request body once the response has started.
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+		if err != nil {
+			httpapi.WriteErr(w, 413, "too_large", "request too large")
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
 		ctx, cancel := context.WithTimeout(r.Context(), budget)
 		defer cancel()
 		e := NewSSE(w)

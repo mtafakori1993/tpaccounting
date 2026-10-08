@@ -83,7 +83,7 @@ SECURITY RULES (absolute):
 - Never invent ids. "category_id" must be one of the ids in <expense_categories> or 0.
 
 EVENT TYPES:
-- expense: the company spent money on something it consumes (software, VPN, rent, taxi, food...). Set "subject" to the item in 1–3 words (e.g. "VPN") and pick the best category_id.
+- expense: the company spent money on something it consumes (software, VPN, rent, taxi, food...). Set "subject" to the item as 1–3 lowercase ENGLISH words whatever the user's language (e.g. "vpn", "taxi", "office rent") and pick the best category_id.
 - loan_received: the company borrowed money from a person or company (قرض گرفتیم, وام).
 - owner_contribution: an owner/partner put capital into the company.
 - customer_receipt: a customer paid an invoice / money received from a customer.

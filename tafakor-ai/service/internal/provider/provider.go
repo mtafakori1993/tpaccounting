@@ -83,6 +83,7 @@ var (
 	ErrUnavailable   = errors.New("the AI provider is unavailable")
 	ErrRateLimited   = errors.New("the AI provider is rate limiting requests")
 	ErrAuth          = errors.New("the AI provider rejected the API key")
+	ErrRejected      = errors.New("the AI provider rejected the request")
 )
 
 type OpenRouter struct {
@@ -158,6 +159,8 @@ func statusErr(code int) error {
 		return ErrRateLimited
 	case code == 407:
 		return ErrProxy
+	case code >= 400 && code < 500 && code != 408:
+		return fmt.Errorf("%w (HTTP %d)", ErrRejected, code)
 	default:
 		return fmt.Errorf("%w (HTTP %d)", ErrUnavailable, code)
 	}
@@ -306,6 +309,8 @@ func PlainMessage(err error) string {
 		return "The AI service is busy right now. Nothing was registered. Please try again in a minute."
 	case errors.Is(err, context.DeadlineExceeded):
 		return "The AI service took too long to answer. Nothing was registered."
+	case errors.Is(err, ErrRejected):
+		return "The AI service could not process this request. Nothing was registered."
 	case errors.Is(err, ErrUnavailable):
 		return "The AI service is unavailable right now. Nothing was registered."
 	}
