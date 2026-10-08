@@ -111,12 +111,38 @@ button { cursor: pointer; }
 .opts button { text-align: start; }
 .opts button.rec { border-color: var(--ai-primary); }
 .opts button.rec::after { content: ' ★'; color: var(--ai-accent); }
-.composer { border-top: 1px solid var(--ai-border); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-.composer .row { display: flex; gap: 6px; align-items: flex-end; }
-.composer textarea { flex: 1; resize: none; min-height: 38px; max-height: 120px; border: 1px solid var(--ai-border); border-radius: var(--ai-radius-sm); padding: 7px 9px; background: var(--ai-bg); }
-.icon { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--ai-border); border-radius: var(--ai-radius-sm); background: var(--ai-bg); flex: none; }
-.icon.rec { background: var(--ai-danger); color: #fff; border-color: var(--ai-danger); }
+.composer { border-top: 1px solid var(--ai-border); padding: 10px; display: flex; flex-direction: column; gap: 6px; background: var(--ai-bg); }
+/* one rounded input box: attach + mic + text + send */
+.composer .row {
+  display: flex; gap: 2px; align-items: flex-end; padding: 4px; border: 1px solid var(--ai-border);
+  border-radius: 14px; background: var(--ai-bg); transition: border-color 120ms, box-shadow 120ms;
+}
+.composer .row:focus-within { border-color: var(--ai-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ai-focus) 25%, transparent); }
+.composer textarea {
+  flex: 1; min-width: 0; box-sizing: border-box; resize: none; border: none; outline: none; background: transparent;
+  height: 34px; min-height: 34px; max-height: 140px; padding: 6px 6px; line-height: 22px; font-size: 14px;
+  overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--ai-border) transparent;
+}
+.composer textarea:focus-visible { outline: none; }
+.composer textarea::placeholder { color: var(--ai-muted); opacity: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer textarea::-webkit-scrollbar { width: 6px; }
+.composer textarea::-webkit-scrollbar-thumb { background: var(--ai-border); border-radius: 3px; }
+.composer textarea::-webkit-scrollbar-button { display: none; height: 0; }
+.icon {
+  width: 34px; height: 34px; display: grid; place-items: center; border: none; border-radius: 10px;
+  background: transparent; color: var(--ai-muted); flex: none; transition: background 120ms, color 120ms;
+}
+.icon:hover { background: var(--ai-hover); color: var(--ai-text); }
+.icon.send { background: var(--ai-primary); color: var(--ai-on-primary); }
+.icon.send:hover { background: var(--color-primary-hover, var(--ai-primary)); color: var(--ai-on-primary); }
+.icon.send[disabled] { background: var(--ai-sunken); color: var(--ai-muted); cursor: default; }
+.icon.rec { background: var(--ai-danger); color: #fff; }
 .icon svg { width: 18px; height: 18px; }
+[dir='rtl'] .icon.send svg { transform: scaleX(-1); }
+.empty { margin: auto 0; text-align: center; color: var(--ai-muted); font-size: 13px; display: flex; flex-direction: column; gap: 10px; align-items: center; padding: 16px 8px; }
+.empty .examples { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.empty .examples button { text-align: start; border: 1px solid var(--ai-border); background: var(--ai-bg); border-radius: 10px; padding: 7px 10px; font-size: 12px; color: var(--ai-text); }
+.empty .examples button:hover { background: var(--ai-hover); }
 .chips { display: flex; gap: 4px; flex-wrap: wrap; }
 .chip { font-size: 11px; background: var(--ai-sunken); border-radius: 10px; padding: 2px 8px; display: flex; gap: 4px; align-items: center; }
 .chip button { border: none; background: none; padding: 0; color: var(--ai-muted); }

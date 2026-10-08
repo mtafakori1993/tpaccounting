@@ -83,17 +83,14 @@ class Widget {
     this.tabsEl = h('div', { class: 'tabs', role: 'tablist' });
     this.body = h('div', { class: 'body', 'aria-live': 'polite' });
     this.chatLog = h('div', { class: 'list' });
-    this.input = h('textarea', { rows: 1, placeholder: t('placeholder'), 'aria-label': t('placeholder') }) as HTMLTextAreaElement;
+    this.input = h('textarea', { rows: 1, placeholder: t('placeholder'), 'aria-label': t('emptyHint'), dir: 'auto' }) as HTMLTextAreaElement;
     this.input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         void this.submit();
       }
     });
-    this.input.addEventListener('input', () => {
-      this.input.style.height = 'auto';
-      this.input.style.height = Math.min(120, this.input.scrollHeight) + 'px';
-    });
+    this.input.addEventListener('input', () => this.autosize());
     this.input.addEventListener('paste', (e) => {
       const files = Array.from(e.clipboardData?.files ?? []);
       if (files.length) {
@@ -111,7 +108,7 @@ class Widget {
     const attachBtn = h('button', { class: 'icon', 'aria-label': t('attach'), title: t('attach'), onclick: () => fileInput.click() }, icon('clip'));
     const micBtn = h('button', { class: 'icon', 'aria-label': t('mic'), title: t('mic') }, icon('mic'));
     this.voice(micBtn);
-    const sendBtn = h('button', { class: 'icon', 'aria-label': t('send'), title: t('send'), onclick: () => void this.submit() }, icon('send'));
+    const sendBtn = h('button', { class: 'icon send', 'aria-label': t('send'), title: t('send'), onclick: () => void this.submit() }, icon('send'));
     const composer = h('div', { class: 'composer' }, this.chips, this.hint, h('div', { class: 'row' }, attachBtn, micBtn, this.input, sendBtn), fileInput);
 
     const head = h('div', { class: 'head' }, icon('spark'), h('span', { class: 'title' }, t('title')),
@@ -127,6 +124,27 @@ class Widget {
     this.renderMode();
     this.show();
     if (store('open')) this.toggle(true);
+  }
+
+  /** Grows the textarea with its content (placeholder never counts); scrolls only past the max height. */
+  autosize() {
+    const el = this.input;
+    if (!el.value) {
+      el.style.height = '';
+      el.style.overflowY = 'hidden';
+      return;
+    }
+    el.style.height = '0px';
+    const max = 140;
+    const hgt = Math.max(34, Math.min(max, el.scrollHeight));
+    el.style.height = hgt + 'px';
+    el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden';
+  }
+
+  emptyState() {
+    return h('div', { class: 'empty' }, h('div', {}, t('emptyHint')),
+      h('div', { class: 'examples' }, ...t('examples').split('|').map((ex) =>
+        h('button', { onclick: () => { this.input.value = ex; this.autosize(); this.input.focus(); } }, ex))));
   }
 
   rebuild() {
@@ -236,7 +254,7 @@ class Widget {
 
   show() {
     if (this.tab === 'chat') {
-      this.body.replaceChildren(this.chatLog);
+      this.body.replaceChildren(this.chatLog.childElementCount ? this.chatLog : this.emptyState());
     } else if (this.tab === 'activity') {
       void this.showActivity();
     } else if (this.tab === 'learned') {
@@ -332,6 +350,7 @@ class Widget {
             const res = await api.transcribe(new Blob(chunks, { type: rec?.mimeType || 'audio/webm' }), lang());
             // Always show the transcript (editable) before anything happens.
             this.input.value = res.normalized || res.text;
+            this.autosize();
             this.transcript = true;
             this.hint.textContent = t('transcriptHint');
             this.input.focus();
@@ -372,7 +391,7 @@ class Widget {
     const uploads = this.pending.map((p) => p.id);
     this.chatLog.append(h('div', { class: 'msg user' }, text || this.pending.map((p) => p.name).join(', ')));
     this.input.value = '';
-    this.input.style.height = 'auto';
+    this.autosize();
     this.chips.replaceChildren();
     this.pending = [];
     this.hint.textContent = '';
