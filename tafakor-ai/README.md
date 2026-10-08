@@ -97,6 +97,13 @@ never blind coordinates. Each step is verified (value shown, option chosen, dial
 Drivers handle React controlled inputs, `ComboBox`, the Jalali `DateField`, selects, tabs and checkboxes. Uploads are
 attached by the service, never through native file pickers.
 
+## Capability catalog and planner
+
+The assistant's tools are generated from the app's source (`service/cmd/capmap`, see `CAPABILITIES.md`). Regenerate after
+changing the app: `cd service && go run ./cmd/capmap -repo ../.. -out internal/catalog/capabilities.json -md ../CAPABILITIES.md`.
+Multi-step requests are planned against this catalog, approved as one card, executed with the user's own permissions and
+audited with before/after values. Money amounts in a plan must come from the user's words, the document or the app (D31).
+
 ## Approval switch and guardrails
 - One visible switch per user: **Ask me before registering** (default) / **Register automatically**. Turning it on asks
   for an explicit risk confirmation; turning it off is instant. "This time ask me" per task. Company lock (env or widget).

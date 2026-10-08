@@ -334,7 +334,7 @@ func PlainMessage(err error) string {
 	case errors.Is(err, context.DeadlineExceeded):
 		return "The AI service took too long to answer. Nothing was registered."
 	case errors.Is(err, ErrCreditsInFlight):
-		return "The AI service's credit is almost used up (OpenRouter key limit). Nothing was registered. Ask your administrator to add credit."
+		return "The AI service's credit is almost used up (OpenRouter account or key limit). Nothing was registered. Ask your administrator to add credit."
 	case errors.Is(err, ErrRejected):
 		return "The AI service could not process this request. Nothing was registered."
 	case errors.Is(err, ErrUnavailable):

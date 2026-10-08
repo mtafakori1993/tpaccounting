@@ -115,3 +115,32 @@ D27. **Inventory receipt from production** is a new operation on the app's exist
 does not exist (`POST /products`, code empty = numbered by the app) and a posted stock receipt (`POST /inventory/documents`,
 Dr inventory / Cr the posting rule "inventory adjustment"). Default warehouse and value-per-unit are inferred (shown in the
 preview, never asked); goods bought from a supplier are redirected to a purchase invoice. Never automatic.
+
+D28. **The tool registry is generated from the application's source, not written by hand.** `service/cmd/capmap`
+parses the backend's routes, route permissions, request structs, validator enums and in-handler permission checks, and
+the frontend's API calls, into `internal/catalog/capabilities.json` (embedded) and `CAPABILITIES.md`. Each operation is
+classified READ_ONLY / REQUIRES_USER_CONFIRMATION / REQUIRES_APPROVAL / NOT_SAFE_TO_AUTOMATE / NOT_SUPPORTED_BY_AI from its
+HTTP method, action and module (users, roles, permissions, settings, backups, fiscal-year closing and deletes of
+posted documents are never executed). Re-run capmap when the app changes; a test fails if the embedded catalog is unreadable.
+
+D29. **One generic operation runner instead of hundreds of hand-written tools.** `tools/operations.go` calls any
+executable catalog operation through the app's own API with the user's token: path/query/body keys are checked against
+the catalog schema (unknown keys rejected), the user's permissions are checked with the app's rule (all route permissions,
+any one in-handler permission), and the app does all validation and accounting. "Required" markers from validators are
+hints only — the app's 422 is the authority and is fed back to the planner (≤2 repairs).
+
+D30. **Multi-step planner with plans bound to approval.** The model reads (any READ_ONLY op), asks, answers, or proposes
+a plan of steps that may reference earlier results (`$s1.id`). The plan is validated server-side, shown as a card, and the
+approval token is bound to the hash of the exact pending steps; any re-plan invalidates the old token. Steps run in order,
+each verified by reading the record back and audited with before/after; a failure stops the plan, keeps completed steps
+and lets the user continue from there without redoing them.
+
+D31. **Deterministic amount guard.** In a live run the model planned 150,000,000,000 rial for "15 million toman"
+(10,000× too much); the approval card was the only defence. Now every money field (amount, unit_price, debit, credit, …)
+in a plan must equal an amount the user wrote (Persian/English number words normalized; toman ×10 when the base currency
+is rial), an amount from the uploaded document, a number the application returned, a reference to an earlier step, or a
+stated total divided/multiplied by a stated quantity. Otherwise the plan is sent back with the allowed amounts; if the model
+cannot fix it, nothing is proposed. Amounts are also shown formatted (with thousands separators) on the plan card.
+
+D32. **OpenRouter 402 "in-flight" credit errors** are retried with a short backoff (bounded); a plain 402 is not. Users see
+"the AI service's credit is not enough — ask the administrator" rather than a generic failure.

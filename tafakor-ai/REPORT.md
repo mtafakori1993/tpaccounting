@@ -96,6 +96,37 @@ that creates a learned rule were also run live.
 - **Manual journal entries, invoices and purchases** created by the assistant are tested only as tool calls (unit level),
   not through a live conversation.
 
+## Follow-up: the assistant as an accounting employee (capability-driven)
+
+**Discovery (Phase 1–3).** `service/cmd/capmap` reads the app's source and produces `CAPABILITIES.md` (feature matrix:
+module, capability, UI, backend, AI tool, AI can execute, confirmation, permission, inputs, status) and the embedded
+catalog the assistant uses. 223 operations: READ_ONLY 98 · REQUIRES_USER_CONFIRMATION 39 · REQUIRES_APPROVAL 55 ·
+NOT_SAFE_TO_AUTOMATE 24 · NOT_SUPPORTED_BY_AI 7. Every tool maps to a real route; nothing is invented (D28–D29).
+
+**Workflows.** A planner proposes multi-step plans (e.g. create the missing counterparty → purchase invoice → payment
+from Bank Mellat), validated against the catalog and the user's permissions, approved as one card bound to the exact steps,
+executed in order with read-back checks and before/after audit, resumable after a failure (D30).
+
+**Phase 12 findings.**
+- A. *Allocating an existing receipt to an invoice is not possible.* Allocations can only be given when a receipt/payment is
+  created (`allocations` / `auto_allocate`); there is no endpoint to match an already-registered deposit to an invoice later.
+  The assistant says so honestly instead of faking it (e.g. by cancelling and re-entering the receipt).
+- B. *Permission checks inside handlers.* Cheque state transitions and some document actions check permissions inside the
+  handler, not on the route; capmap extracts them (`inner_permissions`) so the assistant applies the same rule.
+- C. *UI calls without a backend route:* none found.
+- D. *Backend routes without UI:* `budgets.control.events.get` and `payroll.list` (real gaps); the
+  `/payroll/periods/{id}/<action>` routes are aliases of UI-used routes. `sales/purchases.kind.create` were flagged by static
+  analysis but do have a UI (the URL is held in a variable) — false negatives, verified by hand.
+- E. *Validation duplicated in the UI vs backend:* required markers come from validators but the backend is the authority;
+  the assistant relies on the app's 422 messages and repairs the plan from them.
+- F. *A model can mis-scale amounts* (150,000,000,000 for 15M toman in a live run). Fixed with a deterministic guard (D31).
+  The wrong demo documents were cancelled (payment 21, purchase invoice 8 in the throwaway company).
+
+**Tests.** All unit tests green (incl. planner and amount-guard tests). Live scenarios with the real model passed for all
+listed requests before the guard was added. **The re-run of the complex workflow after the fix failed with HTTP 402: the
+OpenRouter account has only ~$0.17 credit left** (the key's own $5 limit still shows ~$1.56, but the account is the binding
+limit). Add credit, then run `python3 test/employee_scenarios.py http://127.0.0.1:18085`.
+
 ## How to run it
 See README → Setup. For the throwaway test stack used tonight (still running, demo data only):
 ```sh

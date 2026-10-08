@@ -98,3 +98,16 @@ Branch: `feature/tafakor-ai` (never pushed, never merged by the agent).
 - Tests: frame merge/null detection (unit), Galatea multi-turn, intent stability, persistence across HTTP requests and
   refresh, tool results in state, concurrency (`-race`), details-card answers. Live: 37/37 incl. the Galatea conversation;
   verified in Chrome (refresh mid-conversation, follow-up typed in the composer, registered and checked in the app).
+
+### Follow-up — "AI accounting employee" (capability-driven): DONE except the last live re-run (credit exhausted)
+- Discovery: `cmd/capmap` → 223 operations (READ_ONLY 98, REQUIRES_USER_CONFIRMATION 39, REQUIRES_APPROVAL 55,
+  NOT_SAFE_TO_AUTOMATE 24, NOT_SUPPORTED_BY_AI 7); feature matrix in `CAPABILITIES.md`.
+- Registry: generic operation runner over the catalog, filtered by the user's permissions (no hidden superuser).
+- Planner: read/ask/answer/plan, refs between steps, approval bound to plan hash, before/after audit, read-back,
+  partial-failure resume, self-repair on validation errors, amount guard (D31).
+- Unit tests: create-party-then-pay, invented tools/fields refused, restricted ops refused, permission-filtered catalog,
+  failure + resume, approval binding, read-only answers, refs, repair, follow-up after reload, amount guard, 402 retry.
+- Live (real model, demo company): inventory, create+pay, sales invoice 300,000,000 posted, purchase from file,
+  receivables, payables, profit comparison, stock alert, Iranicard balance, restricted perms refused, complex workflow.
+  The complex workflow exposed the 150B amount slip → amount guard; wrong demo documents were cancelled. The re-run after
+  the fix could not complete: the OpenRouter account has ~$0.17 left (HTTP 402).

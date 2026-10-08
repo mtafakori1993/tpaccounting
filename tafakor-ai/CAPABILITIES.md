@@ -234,6 +234,8 @@ Classification → AI behaviour: `READ_ONLY` runs without asking; `REQUIRES_USER
 
 ## Backend operations without a UI call (Phase 12-D)
 
+Static analysis only. Verified by hand: `sales.kind.create` and `purchases.kind.create` DO have a UI (the forms post to a URL held in a variable); the `/payroll/periods/{id}/<action>` routes are aliases of UI-used payroll routes. See REPORT.md, Phase 12 findings.
+
 - `GET /budgets/control/events/{id}` (`budgets.control.events.get`, READ_ONLY)
 - `POST /payroll/periods/{id}/approve` (`payroll.periods.approve`, REQUIRES_APPROVAL)
 - `POST /payroll/periods/{id}/calculate` (`payroll.periods.calculate`, REQUIRES_APPROVAL)

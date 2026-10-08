@@ -674,6 +674,9 @@ func (a *Agent) plain(lang string, err error) string {
 	if errors.Is(err, provider.ErrNotConfigured) || errors.Is(err, provider.ErrProxy) || errors.Is(err, provider.ErrAuth) || errors.Is(err, provider.ErrRejected) || errors.Is(err, provider.ErrCreditsInFlight) ||
 		errors.Is(err, provider.ErrRateLimited) || errors.Is(err, provider.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded) {
 		msg := provider.PlainMessage(err)
+		if lang == "fa" && (errors.Is(err, provider.ErrCreditsInFlight) || strings.Contains(err.Error(), "HTTP 402")) {
+			return "اعتبار حساب سرویس هوش مصنوعی کافی نیست؛ مدیر سیستم باید اعتبار را افزایش دهد. چیزی ثبت نشد."
+		}
 		if lang == "fa" {
 			msg = map[bool]string{true: "ارتباط با سرویس هوش مصنوعی برقرار نشد (پروکسی شبکه پاسخ نمی‌دهد). چیزی ثبت نشد.", false: "سرویس هوش مصنوعی در دسترس نیست. چیزی ثبت نشد."}[errors.Is(err, provider.ErrProxy)]
 		}

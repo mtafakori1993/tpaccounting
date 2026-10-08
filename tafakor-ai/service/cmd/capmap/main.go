@@ -4,7 +4,7 @@
 // query parameters), in-handler permission checks and doc comment; and, from the
 // React app, which operations the UI actually calls and from which screen.
 //
-//	go run ./cmd/capmap -repo ../.. -out ../knowledge/capabilities.json -md ../CAPABILITIES.md
+//	go run ./cmd/capmap -repo ../.. -out internal/catalog/capabilities.json -md ../CAPABILITIES.md
 //
 // The JSON is embedded into the AI service (internal/catalog) and becomes the tool
 // registry; the Markdown is the human-readable capability matrix.
@@ -1051,6 +1051,7 @@ func markdown(c Catalog) string {
 		b.WriteString(fmt.Sprintf("| %s | `%s` | %s `%s` | %s | yes | %s | %s | %s | %s | %s | %s |\n", o.Module, o.ID, o.Method, o.Path, ui, tool, exec, conf, perm, inputs, status))
 	}
 	b.WriteString("\n## Backend operations without a UI call (Phase 12-D)\n\n")
+	b.WriteString("Static analysis only. Verified by hand: `sales.kind.create` and `purchases.kind.create` DO have a UI (the forms post to a URL held in a variable); the `/payroll/periods/{id}/<action>` routes are aliases of UI-used payroll routes. See REPORT.md, Phase 12 findings.\n\n")
 	for _, o := range c.Operations {
 		if !o.UIExists && o.Classification != "NOT_SUPPORTED_BY_AI" {
 			b.WriteString(fmt.Sprintf("- `%s %s` (`%s`, %s)\n", o.Method, o.Path, o.ID, o.Classification))
