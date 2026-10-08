@@ -47,3 +47,52 @@ networking or work around the proxy's access control.
 
 D12. **GOPROXY build argument.** proxy.golang.org returns 403 for some modules from this network; the AI image takes
 `GOPROXY` as a build arg (default proxy.golang.org) so operators can use a mirror (tests used goproxy.cn).
+
+D13. **Budget control in auto mode is conservative.** Budget events are only known when posting. If the company has an
+active budget, expenses and payments always wait for a human (`no_budget_event` fails); a 422 soft limit during
+execution turns into a new human approval with the confirmation header bound into the payload; hard limits stop
+with a plain message (an authorised override must be done in the app). Alternative: read budget lines to predict.
+Reason: never post into a budget event automatically.
+
+D14. **Playbook = company-scope learned rules.** The "company playbook" is the list of rules with scope `company`,
+editable in the widget's "What I've learned" screen by users with `settings.edit`; they are shown to the classifier as
+suggestions. The static guide is `knowledge/*.md` + the generated `knowledge/ai-map.json`.
+
+D15. **Invoices, purchases and manual journal entries are created as drafts and are never automatic.** Cancellations,
+journal entries, checks and payroll are on the never-auto list. Reason: tax/inventory/manual postings need review.
+
+D16. **UI path only when the form can express the exact payload.** E.g. the receipt form cannot put a party on a
+ledger-account line, and the expense form lists only suppliers for credit; in such cases the assistant registers the
+same approved payload through the API and says so in the chat. A UI attempt that creates nothing is reported as a
+failure; "register directly instead" is an explicit user click and is executed at most once (idempotency key).
+
+D17. **Language-independent tags from i18n keys.** `t()` records the key that produced each text; components derive
+tags from their label. Collisions (two keys with the same text in one language) are caught by the coverage crawl,
+which compares tags in fa and en; `LinkButton` is tagged by route and components accept an explicit `aiKey`.
+
+D18. **Screenshots: SVG `foreignObject` → canvas, in the widget, no library.** It re-uses the live DOM and the
+document's stylesheets, so the Vazir font and RTL layout are kept; html2canvas re-implements layout and handles
+RTL/Persian shaping poorly; server-side Chromium cannot see the user's session state. Vision answers are a candidate
+number from a "set of marks" overlay, never raw coordinates; screenshots are stored as files, referenced in the audit.
+
+D19. **Generating a PDF needs no approval card** (it changes no accounting data); it renders through the app's own
+`POST /pdf` as the user and is stored on the AI volume.
+
+D20. **Attaching the original document is part of the approved payload** (the preview shows the file and the payload
+hash includes the file's SHA-256).
+
+D21. **Amounts are read twice.** After extraction a second, focused vision call reads the total; any disagreement makes
+the amount low-confidence (human confirmation). Found necessary in live testing (a 120,000,000 receipt was read as
+125,000,000 with self-reported confidence 0.99).
+
+D22. **Customer advances** are credited to the company's "customer advances" liability account (if exactly one exists)
+with the customer on the line; otherwise they stay as an unallocated credit on the customer's account (noted).
+
+D23. **Loans from persons**: the standard chart has no shareholder-loan account; the assistant offers matching liability
+accounts (loans, partners' current, other payables) and never pre-selects one until the user's answer is learned.
+
+D24. **Speech default = OpenAI-compatible `/audio/transcriptions`** (configurable URL/key/model/proxy) because it needs no
+new infrastructure and many providers (and self-hosted Whisper servers) expose it. Disabled when `SPEECH_BASE_URL` is empty.
+
+D25. **Model output is parsed as JSON objects with validation**, not tool-calling: the model never sees or names write
+tools; the orchestrator maps validated events onto allowlisted tools.

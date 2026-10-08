@@ -49,3 +49,37 @@ Branch: `feature/tafakor-ai` (never pushed, never merged by the agent).
 - Removal verified by `tafakor-ai/verify-removal.sh` (worktree: remove touchpoints + folder → tree identical to `main`,
   backend builds and tests pass, frontend builds).
 - Live check: test core → `/ai-api` → AI container works. The host proxy rejects Docker subnets (D11).
+
+### Phase 2 — Widget + OpenRouter: DONE
+- Shadow-DOM widget (one 64 KB bundle, no framework, no imports from the app): draggable orb and panel, fa/en,
+  RTL/LTR following `<html lang>`, light/dark via the app's tokens, mobile layout, text chat with streamed answers,
+  file picker / drag & drop / paste, human-readable status steps, error cards.
+- `AIProvider` + `OpenRouter` (SSE streaming, usage/cost, bounded retries, proxy-only, plain-language errors), `Router` extension point.
+
+### Phase 3 — Intake, classification, tools, safety core: DONE
+- Extraction (vision, per-field confidence, normalisation, masking, injection flag, second amount reading),
+  voice (`SpeechProvider`, OpenAI-compatible default, number words → digits, ASR alias corrections, editable transcript),
+  classification (LLM event + deterministic resolver against the company's own data), knowledge guide, playbook,
+  read tools + create_receipt/payment/expense, approval switch + policy engine + tokens, duplicates, ambiguity
+  questions (one at a time, recommended first), audit, learning from corrections.
+- Live (real model, demo company): 32/32 scenario checks incl. the demo script, loan from an individual, VPN expense
+  with FX, learning, prompt injection, auto mode + undo, permission inheritance, queries.
+
+### Phase 4 — Tagging + UI agent: DONE
+- Component auto-tagging (i18n-key based), generic tagger, coverage crawl: 60 routes + their "new" dialogs, 0 untagged,
+  identical tags in fa and en. `ai-map.json` generated from the router config + crawl.
+- Observer, virtual cursor, drivers (React inputs, ComboBox, Jalali DateField, select, tabs, checkbox), executor with
+  per-step verification, resumable tasks (refresh → resume/cancel), Cancel always visible.
+- Browser e2e: receipt → approval → cursor fills the real receipt form → server-verified result: 13/13.
+
+### Phase 5 — Vision fallback: DONE
+- SVG-foreignObject screenshot with numbered candidate marks, `/ai-api/ui/locate` (model returns a candidate index only),
+  screenshots stored as files and referenced in the audit. Unit-tested; not needed by the e2e run (tags were enough).
+
+### Phase 6 — Hardening: DONE
+- Undo via reversal (always human-approved), error recovery (proxy/provider/session/permission/validation/budget/period),
+  rate limits, cost log (per task and 30-day summary in AI Activity), retention, remaining tools (invoice, purchase,
+  journal entry as drafts; attach; PDF via the app's letterhead renderer), README.
+- Found and fixed during live tests: request body unreadable after SSE headers (buffered now + HTTP test), core
+  middleware hid `Flush` (Unwrap + test through the middleware chain), OCR misread (second reading), click on a link
+  causing a full reload (page-scoped targeting), form unable to express party+account (UI capability check).
