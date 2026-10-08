@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAIProxyDisabledIsHarmless(t *testing.T) {
@@ -41,7 +42,8 @@ func TestAIProxyForwardsAndStreams(t *testing.T) {
 		fmt.Fprint(w, "data: two\n\n")
 	}))
 	defer upstream.Close()
-	front := httptest.NewServer(aiProxy(upstream.URL))
+	// through the real middleware chain: wrappers must not buffer the stream
+	front := httptest.NewServer(recoverer(logRequests(securityHeaders(false, true)(aiProxy(upstream.URL)))))
 	defer front.Close()
 	req, _ := http.NewRequest("POST", front.URL+"/ai-api/chat", nil)
 	req.AddCookie(&http.Cookie{Name: "tp_session", Value: "s"})
@@ -51,7 +53,16 @@ func TestAIProxyForwardsAndStreams(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	br := bufio.NewReader(resp.Body)
-	line, _ := br.ReadString('\n')
+	got := make(chan string, 1)
+	go func() { l, _ := br.ReadString('\n'); got <- l }()
+	var line string
+	select {
+	case line = <-got:
+	case <-time.After(3 * time.Second):
+		close(release)
+		front.CloseClientConnections()
+		t.Fatal("first event was buffered by the proxy chain")
+	}
 	if line != "data: one\n" {
 		t.Fatalf("first event not streamed: %q", line)
 	}
