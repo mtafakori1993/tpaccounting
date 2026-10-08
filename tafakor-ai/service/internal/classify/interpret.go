@@ -105,7 +105,8 @@ EVENT TYPES:
 - customer_receipt: a customer paid an invoice / money received from a customer.
 - customer_advance: advance payment / prepayment (پیش‌پرداخت, علی‌الحساب) received from a customer, possibly for a project.
 - supplier_payment: the company paid a supplier.
-- purchase / sales_invoice: an invoice for goods/services bought/sold (not yet paid).
+- purchase / sales_invoice: an invoice for goods/services bought/sold. When the user explicitly asks for an invoice ("فاکتور خرید",
+  "فاکتور فروش", "purchase invoice", "sales invoice") use purchase / sales_invoice — never expense.
 - transfer: money moved between the company's own cash/bank accounts.
 - inventory_receipt: goods are ADDED TO STOCK (e.g. a product manufactured by the company). Fill product_name, product_code,
   unit (e.g. "piece"/"عدد"), quantity, unit_value (value per unit as stated; if the user states a value for the product without saying
@@ -114,8 +115,11 @@ EVENT TYPES:
 PAID_BY (for expenses/payments): company_card | bank | cash | personal (an employee/owner paid from their own pocket) | unknown.
 Dates: copy exactly as given (Jalali like 1404/07/16 or Gregorian). Amounts: digits only, no separators; keep the currency the user/document states (IRR=ریال, IRT=تومان, USD...).
 
-INTENTS: register | query (questions about data: unpaid invoices, this month's expenses, balances) | navigate (open a screen/report) | attach (attach the uploaded file to an existing document) | pdf (generate a PDF of a document) | undo | chat (anything else; put a short helpful answer in "reply" in the user's language).
-For query.kind use one of: unpaid_invoices, unpaid_bills, expenses, transactions, report, open_screen, party_balance. Dates as YYYY-MM-DD (Gregorian).
+INTENTS: register (one of the event types above) | operate (ANY other operation in the software, or several steps: create/edit
+customers, suppliers, products, warehouses, accounts; sales or purchase invoices and their posting; stock issues/transfers; journal entries;
+settling invoices; workflows like "create the counterparty and then record the payment") | query (questions about data: unpaid invoices, this month's expenses, balances, comparisons, stock levels) | navigate (open a screen/report) | attach (attach the uploaded file to an existing document) | pdf (generate a PDF of a document) | undo | chat (anything else; put a short helpful answer in "reply" in the user's language).
+For query.kind use one of: unpaid_invoices, unpaid_bills, expenses, transactions, report, open_screen, party_balance, or "other" for any
+other question about the data (it is answered by reading the software). Dates as YYYY-MM-DD (Gregorian).
 
 EXPLICIT NONE: if the user says a field does not exist ("no code", "بدون کد", "doesn't have a code"), put that field name in
 "explicit_null" (e.g. ["product_code"]) — that is a complete answer, not missing information.
@@ -225,7 +229,7 @@ func Interpret(ctx context.Context, ai provider.AIProvider, model string, in Int
 	return it, res, err
 }
 
-var validIntents = map[string]bool{"register": true, "query": true, "navigate": true, "attach": true, "pdf": true, "undo": true, "chat": true}
+var validIntents = map[string]bool{"operate": true, "register": true, "query": true, "navigate": true, "attach": true, "pdf": true, "undo": true, "chat": true}
 var validEvents = map[string]bool{EvInventoryIn: true, EvExpense: true, EvLoanReceived: true, EvCustomerReceipt: true, EvCustomerAdvance: true, EvSupplierPayment: true,
 	EvPurchase: true, EvSalesInvoice: true, EvTransfer: true, EvOwnerCapital: true, EvOther: true}
 
@@ -249,6 +253,15 @@ func ParseInterpretation(text, userText string) (*Interpretation, error) {
 		it.Confidence = 0
 	}
 	it.ExplicitNull = append(it.ExplicitNull, DetectExplicitNulls(userText)...)
+	// the user named the document explicitly: that decides the operation
+	if t := normalize.Text(userText); it.Intent == "register" || it.Intent == "operate" {
+		switch {
+		case strings.Contains(t, normalize.Text("فاکتور خرید")) || strings.Contains(t, "purchase invoice"):
+			it.Intent, it.Event.Type = "register", EvPurchase
+		case strings.Contains(t, normalize.Text("فاکتور فروش")) || strings.Contains(t, "sales invoice"):
+			it.Intent, it.Event.Type = "register", EvSalesInvoice
+		}
+	}
 	for _, p := range []*string{&it.Event.Counterparty, &it.Event.Project, &it.Event.Subject, &it.Event.Purpose, &it.Event.Description,
 		&it.Event.PaidByPerson, &it.Event.TreasuryHint, &it.Event.Reference, &it.Reply, &it.Event.ProductName, &it.Event.ProductCode,
 		&it.Event.Unit, &it.Event.Quantity, &it.Event.UnitValue, &it.Event.TotalValue, &it.Event.Warehouse} {

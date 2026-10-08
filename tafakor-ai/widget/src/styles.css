@@ -170,3 +170,8 @@ table.data td, table.data th { border-bottom: 1px solid var(--ai-border); paddin
 .cursor .label { position: absolute; top: 22px; inset-inline-start: 14px; white-space: nowrap; background: var(--ai-brand-1); color: #e3eeec; font-size: 11px; padding: 2px 8px; border-radius: 10px; }
 .highlight { position: fixed; z-index: 2147482999; pointer-events: none; border: 2px solid var(--ai-accent); border-radius: 6px; transition: all 200ms ease-out; }
 @media (prefers-reduced-motion: reduce) { .cursor, .highlight, .orb { transition: none; } }
+
+.steps-list { margin: 0; padding-inline-start: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.steps-list .args { font-size: 10px; background: var(--ai-sunken); padding: 6px; border-radius: 4px; max-height: 140px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+
+.plan-amounts { font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }

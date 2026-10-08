@@ -350,6 +350,9 @@ func (a *Agent) approveIn(ctx context.Context, u *User, id string, req ApproveRe
 		return
 	}
 	recomputed := payloadHash(st.Proposal.Action, st.ArgsJSON, st.Uploads)
+	if st.Plan != nil {
+		recomputed = planHash(st.Plan)
+	}
 	if req.PayloadHash != "" && req.PayloadHash != recomputed {
 		e.Emit("error", map[string]any{"message": tr(st.Lang, "The details changed after you reviewed them. Please review again.", "جزئیات پس از بررسی شما تغییر کرد. دوباره بررسی کنید.")})
 		return
@@ -367,6 +370,10 @@ func (a *Agent) approveIn(ctx context.Context, u *User, id string, req ApproveRe
 	a.save(ctx, t, st)
 	if st.UndoOf != "" {
 		a.executeUndo(ctx, u, t, st, e)
+		return
+	}
+	if st.Plan != nil {
+		a.executePlan(ctx, u, t, st, e)
 		return
 	}
 	a.execute(ctx, u, t, st, &tools.Authorization{PayloadHash: tools.PayloadHash(st.Proposal.Action, st.ArgsJSON), Mode: "human", ApprovedBy: u.Scope.UserID, TaskID: t.ID}, e)

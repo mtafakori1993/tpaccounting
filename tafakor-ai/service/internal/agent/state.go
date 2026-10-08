@@ -81,6 +81,7 @@ type State struct {
 	Target         *Target                  `json:"target,omitempty"`
 	Frame          *classify.Frame          `json:"frame,omitempty"` // structured state of the operation (merged across turns)
 	ConversationID string                   `json:"conversation_id,omitempty"`
+	Plan           *PlanState               `json:"plan,omitempty"` // capability-driven multi-step operation
 	Model          string                   `json:"model,omitempty"`
 }
 

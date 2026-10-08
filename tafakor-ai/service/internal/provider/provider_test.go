@@ -167,3 +167,33 @@ func TestAuthErrorNotRetried(t *testing.T) {
 var _ = bufio.NewReader
 var _ = io.EOF
 var _ = url.Parse
+
+func TestCreditInFlight402IsRetriedThenSucceeds(t *testing.T) {
+	var n atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if n.Add(1) == 1 {
+			w.WriteHeader(402)
+			fmt.Fprint(w, `{"error":{"message":"This request would exceed your available credits given your current in-flight requests."}}`)
+			return
+		}
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`+"\n\ndata: [DONE]\n\n")
+	}))
+	defer up.Close()
+	o, _ := NewOpenRouter(up.URL, "k", "m", "", nil, 30*time.Second)
+	res, err := o.Complete(context.Background(), Request{})
+	if err != nil || res.Text != "ok" || n.Load() != 2 {
+		t.Fatalf("%v %q %d", err, res.Text, n.Load())
+	}
+	// a plain 402 (no credit at all) is not retried
+	var m atomic.Int32
+	up2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m.Add(1)
+		w.WriteHeader(402)
+		fmt.Fprint(w, `{"error":{"message":"Insufficient credits"}}`)
+	}))
+	defer up2.Close()
+	o2, _ := NewOpenRouter(up2.URL, "k", "m", "", nil, 5*time.Second)
+	if _, err := o2.Complete(context.Background(), Request{}); !errors.Is(err, ErrRejected) || m.Load() != 1 {
+		t.Fatalf("plain 402 must not be retried: %v %d", err, m.Load())
+	}
+}

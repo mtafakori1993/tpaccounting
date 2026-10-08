@@ -554,7 +554,28 @@ class Widget {
     return card;
   }
 
+  planCard(p: any) {
+    const card = h('div', { class: 'card' }, h('h4', {}, p.display?.description || t('planTitle')));
+    const done: string[] = p.completed ?? [];
+    if (done.length) card.append(h('div', { class: 'hint' }, `${t('planDone')}: ${done.join(', ')}`));
+    const list = h('ol', { class: 'steps-list' });
+    for (const s of p.steps ?? []) {
+      const badge = s.classification === 'REQUIRES_APPROVAL' ? t('needsApproval') : t('needsConfirmation');
+      const li = h('li', {}, h('div', {}, h('b', {}, s.purpose || s.tool), ' ', h('span', { class: 'tag' }, badge)),
+        h('div', { class: 'hint', dir: 'ltr' }, `${s.method} ${s.path}`),
+        s.accounting_impact ? h('div', { class: 'hint' }, s.accounting_impact) : null,
+        s.amounts?.length ? h('div', { class: 'plan-amounts', dir: 'ltr' }, (s.amounts as string[]).join(' · ')) : null);
+      const det = h('details', {}, h('summary', { class: 'hint' }, t('details')), h('pre', { class: 'args', dir: 'ltr' }, JSON.stringify(s.args, null, 1)));
+      li.append(det);
+      list.append(li);
+    }
+    card.append(list);
+    this.lastPreview = p;
+    return card;
+  }
+
   previewCard(p: any) {
+    if (p.action === 'plan') return this.planCard(p);
     const d = p.display ?? {};
     const rows: [string, string | undefined][] = [
       [t('documentType'), d.document_type], [t('amount'), d.amount ? num(d.amount) + ' ' + (d.currency ?? '') + (d.original_amount ? ` (${d.original_amount})` : '') : undefined],

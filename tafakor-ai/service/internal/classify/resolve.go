@@ -99,7 +99,8 @@ type Proposal struct {
 	Notes     []string                    `json:"notes,omitempty"`
 	UsedRules []int64                     `json:"used_rules,omitempty"`
 	Suggested map[string]Choice           `json:"suggested"`
-	Stop      string                      `json:"stop,omitempty"` // cannot proceed; plain-language reason
+	Stop      string                      `json:"stop,omitempty"`      // cannot proceed; plain-language reason
+	StopCode  string                      `json:"stop_code,omitempty"` // missing_record: a counterparty/record must be created first (planner takes over)
 	Subject   string                      `json:"subject,omitempty"`
 	PartyID   int64                       `json:"party_id,omitempty"`
 }
@@ -561,6 +562,7 @@ func (r *resolver) party(field, name, role string, required bool) (*tools.Party,
 		opts[0].Recommended = true
 	default:
 		if required && len(opts) == 0 {
+			r.p.StopCode = "missing_record"
 			r.p.Stop = r.c.tr(fmt.Sprintf("I couldn't find %q among your parties. Please create it in Parties first (I don't create parties), then try again.", name),
 				fmt.Sprintf("«%s» را در طرف‌حساب‌ها پیدا نکردم. لطفاً ابتدا آن را در بخش طرف‌حساب‌ها تعریف کنید (من طرف حساب نمی‌سازم) و دوباره امتحان کنید.", name))
 			return nil, errQuestion

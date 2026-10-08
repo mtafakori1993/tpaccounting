@@ -50,10 +50,10 @@ func TestDetectExplicitNulls(t *testing.T) {
 	cases := map[string]bool{
 		"10 units, piece, default warehouse, no code": true,
 		"۱۰ عدد، انبار پیش‌فرض، بدون کد":              true,
-		"کد نداره":                                    true,
-		"it doesn't have a code":                      true,
-		"the code is 1234":                            false,
-		"10 units":                                    false,
+		"کد نداره":               true,
+		"it doesn't have a code": true,
+		"the code is 1234":       false,
+		"10 units":               false,
 	}
 	for in, want := range cases {
 		got := false

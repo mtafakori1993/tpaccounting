@@ -25,6 +25,12 @@ type Part struct {
 	Text     string    `json:"text,omitempty"`
 	ImageURL *ImageURL `json:"image_url,omitempty"`
 	File     *File     `json:"file,omitempty"`
+	// CacheControl marks a large, stable prefix (e.g. the tool catalog) as cacheable.
+	CacheControl *CacheControl `json:"cache_control,omitempty"`
+}
+
+type CacheControl struct {
+	Type string `json:"type"` // "ephemeral"
 }
 
 type ImageURL struct {
@@ -78,12 +84,13 @@ type AIProvider interface {
 
 // Error kinds surfaced to users in plain language.
 var (
-	ErrNotConfigured = errors.New("the AI provider is not configured")
-	ErrProxy         = errors.New("the network proxy for the AI provider is unreachable")
-	ErrUnavailable   = errors.New("the AI provider is unavailable")
-	ErrRateLimited   = errors.New("the AI provider is rate limiting requests")
-	ErrAuth          = errors.New("the AI provider rejected the API key")
-	ErrRejected      = errors.New("the AI provider rejected the request")
+	ErrNotConfigured   = errors.New("the AI provider is not configured")
+	ErrProxy           = errors.New("the network proxy for the AI provider is unreachable")
+	ErrUnavailable     = errors.New("the AI provider is unavailable")
+	ErrRateLimited     = errors.New("the AI provider is rate limiting requests")
+	ErrAuth            = errors.New("the AI provider rejected the API key")
+	ErrRejected        = errors.New("the AI provider rejected the request")
+	ErrCreditsInFlight = errors.New("the AI provider's credit is reserved by requests still settling")
 )
 
 type OpenRouter struct {
@@ -167,7 +174,7 @@ func statusErr(code int) error {
 }
 
 func retryable(err error) bool {
-	return errors.Is(err, ErrRateLimited) || (errors.Is(err, ErrUnavailable) && !errors.Is(err, ErrAuth))
+	return errors.Is(err, ErrRateLimited) || errors.Is(err, ErrCreditsInFlight) || (errors.Is(err, ErrUnavailable) && !errors.Is(err, ErrAuth))
 }
 
 type chatBody struct {
@@ -202,7 +209,7 @@ func (o *OpenRouter) Stream(ctx context.Context, req Request, onDelta func(strin
 			select {
 			case <-ctx.Done():
 				return Result{}, ctx.Err()
-			case <-time.After(time.Duration(attempt*attempt) * 700 * time.Millisecond):
+			case <-time.After(backoff(attempt, lastErr)):
 			}
 		}
 		res, started, err := o.once(ctx, payload, onDelta)
@@ -236,7 +243,24 @@ func (o *OpenRouter) once(ctx context.Context, payload []byte, onDelta func(stri
 	}
 	defer resp.Body.Close()
 	if err := statusErr(resp.StatusCode); err != nil {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		// keep the provider's own reason (e.g. credit limit) for the audit log; never the request or key
+		var eb struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(body, &eb) == nil && eb.Error.Message != "" {
+			msg := eb.Error.Message
+			if resp.StatusCode == 402 && strings.Contains(msg, "in-flight") {
+				// credit reserved for requests that have not settled yet: wait and retry (bounded)
+				return Result{}, false, fmt.Errorf("%w: %s", ErrCreditsInFlight, msg)
+			}
+			if len(msg) > 300 {
+				msg = msg[:300]
+			}
+			return Result{}, false, fmt.Errorf("%w: %s", err, msg)
+		}
 		return Result{}, false, err
 	}
 	var res Result
@@ -309,10 +333,19 @@ func PlainMessage(err error) string {
 		return "The AI service is busy right now. Nothing was registered. Please try again in a minute."
 	case errors.Is(err, context.DeadlineExceeded):
 		return "The AI service took too long to answer. Nothing was registered."
+	case errors.Is(err, ErrCreditsInFlight):
+		return "The AI service's credit is almost used up (OpenRouter key limit). Nothing was registered. Ask your administrator to add credit."
 	case errors.Is(err, ErrRejected):
 		return "The AI service could not process this request. Nothing was registered."
 	case errors.Is(err, ErrUnavailable):
 		return "The AI service is unavailable right now. Nothing was registered."
 	}
 	return "Something went wrong while talking to the AI service. Nothing was registered."
+}
+
+func backoff(attempt int, err error) time.Duration {
+	if errors.Is(err, ErrCreditsInFlight) {
+		return time.Duration(attempt) * 6 * time.Second
+	}
+	return time.Duration(attempt*attempt) * 700 * time.Millisecond
 }

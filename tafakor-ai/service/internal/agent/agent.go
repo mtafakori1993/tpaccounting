@@ -273,7 +273,13 @@ func (a *Agent) startTask(ctx context.Context, u *User, req StartRequest, c *con
 	switch it.Intent {
 	case "register":
 		a.register(ctx, u, t, st, cfg, e)
+	case "operate":
+		a.startPlan(ctx, u, t, st, c, e)
 	case "query", "navigate":
+		if it.Intent == "query" && !fixedQueries[it.Query.Kind] {
+			a.startPlan(ctx, u, t, st, c, e) // any other question: read the software and answer
+			return t.ID
+		}
 		a.query(ctx, u, t, st, e)
 	case "undo":
 		a.pickTarget(ctx, u, t, st, e, "undo")
@@ -393,6 +399,13 @@ func (a *Agent) register(ctx context.Context, u *User, t *store.Task, st *State,
 				return
 			}
 		}
+	}
+	unclassified := p.Question != nil && p.Question.Field == "event_type"
+	if (p.StopCode == "missing_record" || p.Action == "create_invoice" || p.Action == "create_purchase" || unclassified) && st.Plan == nil {
+		// a record the operation needs does not exist: plan it (create it first, then continue)
+		a.audit(ctx, u, t.ID, "handover_to_planner", map[string]any{"reason": p.StopCode})
+		a.startPlan(ctx, u, t, st, nil, e)
+		return
 	}
 	if p.Stop != "" {
 		a.stop(ctx, u, t, st, e, p.Stop)
@@ -658,7 +671,7 @@ func (a *Agent) plain(lang string, err error) string {
 	if err == nil {
 		return ""
 	}
-	if errors.Is(err, provider.ErrNotConfigured) || errors.Is(err, provider.ErrProxy) || errors.Is(err, provider.ErrAuth) || errors.Is(err, provider.ErrRejected) ||
+	if errors.Is(err, provider.ErrNotConfigured) || errors.Is(err, provider.ErrProxy) || errors.Is(err, provider.ErrAuth) || errors.Is(err, provider.ErrRejected) || errors.Is(err, provider.ErrCreditsInFlight) ||
 		errors.Is(err, provider.ErrRateLimited) || errors.Is(err, provider.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded) {
 		msg := provider.PlainMessage(err)
 		if lang == "fa" {
@@ -721,3 +734,6 @@ func apiErrorText(lang string, e *accounting.APIError) string {
 	}
 	return msg
 }
+
+// fixedQueries are answered by the built-in query handlers; everything else goes to the planner.
+var fixedQueries = map[string]bool{"expenses": true, "transactions": true, "open_screen": true}

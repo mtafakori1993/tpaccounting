@@ -19,6 +19,8 @@ var smallWords = map[string]int64{
 var scaleWords = map[string]int64{
 	"هزار": 1_000, "میلیون": 1_000_000, "ملیون": 1_000_000, "میلیارد": 1_000_000_000, "ملیارد": 1_000_000_000,
 	"تریلیون": 1_000_000_000_000,
+	// English scale words appear in mixed-language requests ("5 million toman")
+	"thousand": 1_000, "million": 1_000_000, "billion": 1_000_000_000,
 }
 
 // Words that are numbers but also common words; never converted when alone.
@@ -52,7 +54,7 @@ func classify(raw string) numTok {
 		t.small = &d
 		return t
 	}
-	if v, ok := scaleWords[n]; ok {
+	if v, ok := scaleWords[strings.ToLower(n)]; ok {
 		t.scale = v
 		return t
 	}

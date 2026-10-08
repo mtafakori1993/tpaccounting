@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -125,6 +127,15 @@ func (h *HTTP) sse(fn func(ctx context.Context, u *User, r *http.Request, e Emit
 		ctx, cancel := context.WithTimeout(r.Context(), budget)
 		defer cancel()
 		e := NewSSE(w)
+		// the stream is already open: a crash must still reach the user as a plain message
+		defer func() {
+			if p := recover(); p != nil {
+				slog.Error("panic", "path", r.URL.Path, "err", p, "stack", string(debug.Stack()))
+				e.Emit("error", map[string]any{"message": tr(lang(u), "Something went wrong on our side. Nothing more was changed; please try again.",
+					"خطایی در سمت ما رخ داد. تغییر دیگری انجام نشد؛ لطفاً دوباره تلاش کنید.")})
+				e.Emit("done", map[string]any{"stage": "failed"})
+			}
+		}()
 		fn(ctx, u, r, e)
 	}
 }

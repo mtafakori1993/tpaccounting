@@ -18,6 +18,7 @@ import (
 	"sort"
 
 	"github.com/tafakorpardazan/tafakor-ai/internal/accounting"
+	"github.com/tafakorpardazan/tafakor-ai/internal/catalog"
 )
 
 type Kind string
@@ -74,6 +75,7 @@ func NewRegistry() *Registry {
 	for _, t := range writeTools() {
 		r.tools[t.Name] = t
 	}
+	r.RegisterCatalog(catalog.Load())
 	return r
 }
 

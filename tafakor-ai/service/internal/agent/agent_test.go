@@ -30,12 +30,13 @@ type fakeAcc struct {
 	expenses    []map[string]any
 	attachments map[string][]string
 	products    []map[string]any
+	parties     []map[string]any
 	stockDocs   []map[string]any
 	posts       int
 	srv         *httptest.Server
 }
 
-var adminPerms = []string{"products.view", "products.create", "inventory.view", "inventory.create", "inventory.post", "parties.view", "cost_centers.view", "treasury.view", "treasury.create", "treasury.post", "treasury.cancel",
+var adminPerms = []string{"parties.create", "parties.edit", "products.view", "products.create", "inventory.view", "inventory.create", "inventory.post", "parties.view", "cost_centers.view", "treasury.view", "treasury.create", "treasury.post", "treasury.cancel",
 	"expenses.view", "expenses.create", "expenses.post", "expenses.cancel", "accounts.view", "company.view", "sales.view", "settings.edit"}
 var viewerPerms = []string{"parties.view", "cost_centers.view", "treasury.view", "expenses.view", "accounts.view", "company.view"}
 
@@ -81,11 +82,54 @@ func newFakeAcc(t *testing.T) *fakeAcc {
 		js(w, map[string]any{"id": id, "email": who(r) + "@demo", "full_name": who(r), "language": "en", "permissions": list,
 			"company": map[string]any{"id": 1, "name": "Demo", "base_currency": "IRR", "amount_decimals": 0}})
 	})
+	f.parties = []map[string]any{
+		{"id": 100, "code": "0001", "name": "محمد تفکری", "kind": "person", "is_other": true, "is_active": true},
+		{"id": 101, "code": "0002", "name": "Company X", "is_customer": true, "is_active": true},
+	}
 	mux.HandleFunc("GET /api/v1/parties", func(w http.ResponseWriter, r *http.Request) {
-		js(w, map[string]any{"items": []map[string]any{
-			{"id": 100, "code": "0001", "name": "محمد تفکری", "kind": "person", "is_other": true, "is_active": true},
-			{"id": 101, "code": "0002", "name": "Company X", "is_customer": true, "is_active": true},
-		}})
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		q := r.URL.Query().Get("q")
+		out := []map[string]any{}
+		for _, p := range f.parties {
+			if q == "" || strings.Contains(p["name"].(string), q) {
+				out = append(out, p)
+			}
+		}
+		js(w, map[string]any{"items": out, "total": len(out)})
+	})
+	mux.HandleFunc("GET /api/v1/parties/{id}", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		for _, p := range f.parties {
+			if fmt.Sprint(p["id"]) == r.PathValue("id") {
+				js(w, p)
+				return
+			}
+		}
+		w.WriteHeader(404)
+	})
+	mux.HandleFunc("POST /api/v1/parties", func(w http.ResponseWriter, r *http.Request) {
+		if !perms(r)["parties.create"] {
+			deny(w)
+			return
+		}
+		var in map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		if k := fmt.Sprint(in["kind"]); k != "person" && k != "company" {
+			w.WriteHeader(422)
+			_, _ = w.Write([]byte(`{"error":{"code":"validation","message":"validation failed","fields":{"kind":"invalid"}}}`))
+			return
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		in["id"] = 200 + len(f.parties)
+		in["code"] = fmt.Sprintf("%04d", len(f.parties)+1)
+		in["is_active"] = true
+		f.parties = append(f.parties, in)
+		f.posts++
+		w.WriteHeader(201)
+		js(w, in)
 	})
 	mux.HandleFunc("GET /api/v1/cost-centers", func(w http.ResponseWriter, r *http.Request) {
 		js(w, []map[string]any{{"id": 30, "code": "PRJ-WEB", "kind": "project", "name": "پروژه وب‌سایت", "name_en": "Website project", "is_active": true}})
@@ -132,6 +176,11 @@ func newFakeAcc(t *testing.T) *fakeAcc {
 		}
 		var in map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&in)
+		if fmt.Sprint(in["amount"]) == "13" {
+			w.WriteHeader(422)
+			_, _ = w.Write([]byte(`{"error":{"code":"insufficient_funds","message":"the cash balance is not sufficient"}}`))
+			return
+		}
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.posts++
@@ -248,12 +297,14 @@ func newFakeAcc(t *testing.T) *fakeAcc {
 // ---------- scripted model (test only) ----------
 
 type scripted struct {
-	mu         sync.Mutex
-	extraction string
-	interp     string
-	queue      []string // per-turn interpretations (consumed in order; then interp)
-	prompts    []string // user prompts sent for interpretation (to inspect follow-up mode)
-	calls      int
+	mu          sync.Mutex
+	extraction  string
+	interp      string
+	queue       []string // per-turn interpretations (consumed in order; then interp)
+	planQueue   []string // planner rounds
+	planPrompts []string
+	prompts     []string // user prompts sent for interpretation (to inspect follow-up mode)
+	calls       int
 }
 
 func (s *scripted) Stream(ctx context.Context, req provider.Request, on func(string)) (provider.Result, error) {
@@ -264,6 +315,12 @@ func (s *scripted) Stream(ctx context.Context, req provider.Request, on func(str
 	switch {
 	case strings.Contains(sys, "You extract data"):
 		out = s.extraction
+	case strings.Contains(sys, "planning step"):
+		s.planPrompts = append(s.planPrompts, req.Messages[len(req.Messages)-1].Content[0].Text)
+		out = `{"action":"answer","text":"(no scripted plan)"}`
+		if len(s.planQueue) > 0 {
+			out, s.planQueue = s.planQueue[0], s.planQueue[1:]
+		}
 	case strings.Contains(sys, "classification step"):
 		s.prompts = append(s.prompts, req.Messages[len(req.Messages)-1].Content[0].Text)
 		if len(s.queue) > 0 {

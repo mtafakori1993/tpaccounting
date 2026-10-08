@@ -195,7 +195,7 @@ func (a *Agent) activeOperation(ctx context.Context, u *User, c *conversation) (
 		return nil, nil
 	}
 	t, st, err := a.load(ctx, u, c.state.ActiveTask)
-	if err != nil || st.Frame == nil || !followUpStages[st.Stage] {
+	if err != nil || (st.Frame == nil && st.Plan == nil) || !followUpStages[st.Stage] {
 		return nil, nil
 	}
 	return t, st
@@ -209,6 +209,10 @@ var answerKeys = map[string][]string{
 
 // followUp merges a new user message into the open operation and continues it.
 func (a *Agent) followUp(ctx context.Context, u *User, t *store.Task, st *State, text string, c *conversation, e Emitter) {
+	if st.Plan != nil {
+		a.planFollowUp(ctx, u, t, st, text, c, e)
+		return
+	}
 	status(e, st.Lang, "understanding")
 	cfg, err := tools.LoadCompanyConfig(ctx, a.env(u))
 	if err != nil {
@@ -369,6 +373,9 @@ func (a *Agent) Reissue(ctx context.Context, u *User, id string, e Emitter) {
 		return
 	}
 	hash := payloadHash(st.Proposal.Action, st.ArgsJSON, st.Uploads)
+	if st.Plan != nil {
+		hash = planHash(st.Plan)
+	}
 	if hash != st.PayloadHash {
 		e.Emit("error", map[string]any{"message": "the details changed; review again"})
 		return

@@ -6,3 +6,4 @@ service/aiservice
 *.db-wal
 *.db-shm
 test-artifacts/
+__pycache__/
