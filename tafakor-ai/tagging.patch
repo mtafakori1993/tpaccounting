@@ -1,0 +1,407 @@
+diff --git a/frontend/src/components/ui/Button.tsx b/frontend/src/components/ui/Button.tsx
+index 1f64342..8b30906 100644
+--- a/frontend/src/components/ui/Button.tsx
++++ b/frontend/src/components/ui/Button.tsx
+@@ -1,5 +1,6 @@
+ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+ import { Link } from 'react-router-dom';
++import { aiKey } from './aiTags';
+ 
+ type Variant = 'accent' | 'secondary' | 'quiet' | 'negative';
+ 
+@@ -21,6 +22,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
+       className={`btn btn-${variant} ${size === 'sm' ? 'btn-sm' : ''} ${className}`}
+       disabled={disabled || pending}
+       aria-busy={pending || undefined}
++      data-ai-action={aiKey(children)}
+       {...rest}
+     >
+       {pending ? <span className="spinner" style={{ width: 14, height: 14 }} /> : icon}
+@@ -31,7 +33,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
+ 
+ export function IconButton({ label, icon, size = 'md', className = '', ...rest }: Omit<Props, 'children'> & { label: string; icon: ReactNode }) {
+   return (
+-    <button type="button" className={`btn btn-quiet btn-icon ${size === 'sm' ? 'btn-sm' : ''} ${className}`} aria-label={label} title={label} {...rest}>
++    <button type="button" className={`btn btn-quiet btn-icon ${size === 'sm' ? 'btn-sm' : ''} ${className}`} aria-label={label} title={label} data-ai-action={aiKey(label)} {...rest}>
+       {icon}
+     </button>
+   );
+@@ -39,7 +41,7 @@ export function IconButton({ label, icon, size = 'md', className = '', ...rest }
+ 
+ export function LinkButton({ to, variant = 'secondary', icon, children, size = 'md' }: { to: string; variant?: Variant; icon?: ReactNode; children: ReactNode; size?: 'sm' | 'md' }) {
+   return (
+-    <Link to={to} className={`btn btn-${variant} ${size === 'sm' ? 'btn-sm' : ''}`}>
++    <Link to={to} className={`btn btn-${variant} ${size === 'sm' ? 'btn-sm' : ''}`} data-ai-nav={to}>
+       {icon}
+       {children}
+     </Link>
+diff --git a/frontend/src/components/ui/ComboBox.tsx b/frontend/src/components/ui/ComboBox.tsx
+index f84705f..59e06f1 100644
+--- a/frontend/src/components/ui/ComboBox.tsx
++++ b/frontend/src/components/ui/ComboBox.tsx
+@@ -164,6 +164,7 @@ export function ComboBox({ value, valueLabel, onChange, search, recent, placehol
+             <div
+               key={o.id}
+               role="option"
++              data-ai-option-id={o.id}
+               aria-selected={i === active}
+               aria-disabled={o.disabled}
+               className="option"
+diff --git a/frontend/src/components/ui/DataTable.tsx b/frontend/src/components/ui/DataTable.tsx
+index 7b5f06c..acd6d16 100644
+--- a/frontend/src/components/ui/DataTable.tsx
++++ b/frontend/src/components/ui/DataTable.tsx
+@@ -105,6 +105,7 @@ export function DataTable<T>({ columns, rows, rowKey, loading, error, onRetry, o
+             {rows?.map((r, i) => (
+               <tr
+                 key={rowKey(r, i)}
++                data-ai-row-id={rowKey(r, i)}
+                 className={`${onRowClick ? 'clickable' : ''} ${rowClassName?.(r) ?? ''}`}
+                 onClick={onRowClick ? () => onRowClick(r) : undefined}
+                 onKeyDown={onRowClick ? (e) => e.key === 'Enter' && onRowClick(r) : undefined}
+diff --git a/frontend/src/components/ui/Dialog.tsx b/frontend/src/components/ui/Dialog.tsx
+index 6b3a2c2..df61c44 100644
+--- a/frontend/src/components/ui/Dialog.tsx
++++ b/frontend/src/components/ui/Dialog.tsx
+@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
+ import { X } from 'lucide-react';
+ import { useI18n } from '@/i18n/I18nProvider';
+ import { Button } from './Button';
++import { aiKey } from './aiTags';
+ 
+ interface Props {
+   title: ReactNode;
+@@ -55,13 +56,13 @@ export function Dialog({ title, onClose, children, footer, wide, size, descripti
+   }, []);
+   return createPortal(
+     <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && closeRef.current()}>
+-      <div className={`dialog ${size ?? (wide ? 'wide' : '')}`} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? `${titleId}-d` : undefined} ref={ref}>
++      <div className={`dialog ${size ?? (wide ? 'wide' : '')}`} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? `${titleId}-d` : undefined} ref={ref} data-ai-dialog={aiKey(title)}>
+         <div className="dialog-head">
+           <div>
+             <h2 className="dialog-title" id={titleId}>{title}</h2>
+             {description && <div className="dialog-desc" id={`${titleId}-d`}>{description}</div>}
+           </div>
+-          <button type="button" className="btn btn-quiet btn-icon dialog-close" aria-label={t('common.close')} onClick={onClose}>
++          <button type="button" className="btn btn-quiet btn-icon dialog-close" aria-label={t('common.close')} data-ai-action="common.close" onClick={onClose}>
+             <X size={18} />
+           </button>
+         </div>
+diff --git a/frontend/src/components/ui/Field.tsx b/frontend/src/components/ui/Field.tsx
+index 3e61c32..81d3c08 100644
+--- a/frontend/src/components/ui/Field.tsx
++++ b/frontend/src/components/ui/Field.tsx
+@@ -3,6 +3,7 @@ import { useFieldError } from '@/i18n/errors';
+ import { normalizeDigits } from '@/lib/dates';
+ import { useFormat } from '@/i18n/format';
+ import { NumericInput, type NumericInputProps } from './NumberInput';
++import { aiKey } from './aiTags';
+ 
+ interface FieldProps {
+   label?: ReactNode;
+@@ -11,11 +12,13 @@ interface FieldProps {
+   /** validation code from the API, translated automatically */
+   error?: string;
+   className?: string;
++  /** explicit data-ai-field tag (defaults to the label's i18n key) */
++  aiKey?: string;
+   children: ReactElement<{ id?: string; 'aria-invalid'?: boolean; 'aria-describedby'?: string }>;
+ }
+ 
+ /** Label + control + help/error, wired for accessibility. */
+-export function Field({ label, required, help, error, className = '', children }: FieldProps) {
++export function Field({ label, required, help, error, className = '', aiKey: tag, children }: FieldProps) {
+   const id = useId();
+   const fieldError = useFieldError();
+   const msg = fieldError(error);
+@@ -24,7 +27,7 @@ export function Field({ label, required, help, error, className = '', children }
+     ? cloneElement(children, { id: children.props.id ?? id, 'aria-invalid': msg ? true : undefined, 'aria-describedby': describedBy })
+     : children;
+   return (
+-    <div className={`field ${className}`}>
++    <div className={`field ${className}`} data-ai-field={tag ?? aiKey(label)}>
+       {label && (
+         <label className="field-label" htmlFor={children.props.id ?? id}>
+           {label}
+@@ -57,9 +60,9 @@ export function Select({ className = '', children, ...rest }: SelectHTMLAttribut
+   );
+ }
+ 
+-export function Checkbox({ label, checked, onChange, disabled }: { label: ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
++export function Checkbox({ label, checked, onChange, disabled, aiKey: tag }: { label: ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; aiKey?: string }) {
+   return (
+-    <label className="checkbox">
++    <label className="checkbox" data-ai-field={tag ?? aiKey(label)}>
+       <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+       <span>{label}</span>
+     </label>
+@@ -68,7 +71,7 @@ export function Checkbox({ label, checked, onChange, disabled }: { label: ReactN
+ 
+ export function Switch({ label, checked, onChange, disabled }: { label: ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+   return (
+-    <label className="switch">
++    <label className="switch" data-ai-field={aiKey(label)}>
+       <input type="checkbox" role="switch" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+       <span>{label}</span>
+     </label>
+diff --git a/frontend/src/components/ui/Misc.tsx b/frontend/src/components/ui/Misc.tsx
+index 352920a..c5cd288 100644
+--- a/frontend/src/components/ui/Misc.tsx
++++ b/frontend/src/components/ui/Misc.tsx
+@@ -5,6 +5,7 @@ import { useI18n, type TKey } from '@/i18n/I18nProvider';
+ import { useFormat } from '@/i18n/format';
+ import { useClickOutside } from '@/lib/hooks';
+ import { Popover } from './Popover';
++import { aiKey } from './aiTags';
+ import { toBig } from '@/lib/decimal';
+ 
+ export function PageHeader({ title, subtitle, crumbs, actions, meta }: { title: ReactNode; subtitle?: ReactNode; crumbs?: { label: string; to?: string }[]; actions?: ReactNode; meta?: ReactNode }) {
+@@ -139,7 +140,7 @@ export function Tabs<K extends string>({ tabs, value, onChange, label }: { tabs:
+   return (
+     <div className="tabs" role="tablist" aria-label={label} onKeyDown={onKey}>
+       {tabs.map((tb) => (
+-        <button key={tb.key} data-key={tb.key} role="tab" type="button" className="tab" aria-selected={value === tb.key} tabIndex={value === tb.key ? 0 : -1} onClick={() => onChange(tb.key)}>
++        <button key={tb.key} data-key={tb.key} data-ai-tab={tb.key || "all"} role="tab" type="button" className="tab" aria-selected={value === tb.key} tabIndex={value === tb.key ? 0 : -1} onClick={() => onChange(tb.key)}>
+           {tb.label}
+           {tb.count !== undefined && tb.count !== null && <span className={`tab-count ${tb.tone ?? ''}`}>{tb.count}</span>}
+         </button>
+@@ -158,7 +159,7 @@ export interface MenuItem {
+   separator?: boolean;
+ }
+ 
+-export function ActionMenu({ items, label }: { items: MenuItem[]; label?: string }) {
++export function ActionMenu({ items, label, aiKey: tag }: { items: MenuItem[]; label?: string; aiKey?: string }) {
+   const { t } = useI18n();
+   const [open, setOpen] = useState(false);
+   const pop = useRef<HTMLDivElement>(null);
+@@ -168,7 +169,7 @@ export function ActionMenu({ items, label }: { items: MenuItem[]; label?: string
+   if (!visible.length) return null;
+   return (
+     <div className="menu" ref={ref}>
+-      <button ref={btn} type="button" className="btn btn-secondary btn-icon" aria-haspopup="menu" aria-expanded={open} aria-label={label ?? t('common.more')} title={label ?? t('common.more')} onClick={() => setOpen((o) => !o)}>
++      <button ref={btn} type="button" className="btn btn-secondary btn-icon" aria-haspopup="menu" aria-expanded={open} aria-label={label ?? t('common.more')} title={label ?? t('common.more')} data-ai-action={tag ?? (label ? aiKey(label) : 'common.more')} onClick={() => setOpen((o) => !o)}>
+         <MoreHorizontal size={18} />
+       </button>
+       {open && (
+diff --git a/frontend/src/components/ui/aiTags.ts b/frontend/src/components/ui/aiTags.ts
+new file mode 100644
+index 0000000..1e3e58d
+--- /dev/null
++++ b/frontend/src/components/ui/aiTags.ts
+@@ -0,0 +1,98 @@
++// Tafakor AI tags: language-independent data-ai-* attributes derived from props.
++// Harmless when the AI add-on is absent (plain data attributes).
++import { Children, isValidElement, type ReactNode } from 'react';
++import { aiKeyOf } from '@/i18n/I18nProvider';
++
++/** The i18n key behind a label (string or the first string child), if any. */
++export function aiKey(node: ReactNode): string | undefined {
++  // composite labels such as "Amount (IRR)" fall back to their translated part
++  if (typeof node === 'string') return aiKeyOf(node) ?? aiKeyOf(node.replace(/\s*\([^)]*\)\s*$/, ''));
++  if (typeof node === 'number' || node === null || node === undefined || typeof node === 'boolean') return undefined;
++  if (Array.isArray(node)) {
++    for (const n of node) {
++      const k = aiKey(n);
++      if (k) return k;
++    }
++    return undefined;
++  }
++  if (isValidElement<{ children?: ReactNode }>(node)) {
++    for (const c of Children.toArray(node.props.children)) {
++      const k = aiKey(c);
++      if (k) return k;
++    }
++  }
++  return undefined;
++}
++
++/** Route pattern of a path: numeric segments become ':id'. */
++export function aiPage(pathname: string): string {
++  const p = pathname.replace(/^\/+|\/+$/g, '').split('/').map((s) => (/^\d+$/.test(s) ? ':id' : s)).join('/');
++  return p || 'dashboard';
++}
++
++const INTERACTIVE = 'button, a[href], input, select, textarea, [role="button"], [role="tab"], [role="menuitem"], [role="combobox"]';
++
++function tagOne(el: Element) {
++  if (el.closest('#tafakor-ai-host') || el.hasAttribute('data-ai-action') || el.hasAttribute('data-ai-nav') || el.closest('[data-ai-field]') ||
++    el.hasAttribute('data-ai-tab') || el.hasAttribute('data-ai-option-id')) return;
++  const aria = (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
++  const isControl = el.matches('input, select, textarea');
++  // form controls are named by aria-label or their <label>, never by their content (option texts)
++  const forLabel = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.textContent?.trim() ?? '' : '';
++  const text = (aria || forLabel || (isControl ? '' : (el as HTMLElement).innerText) || '').trim();
++  const placeholder = el.getAttribute('placeholder') ?? '';
++  const labelText = (el.closest('label')?.textContent ?? '').trim();
++  let key = (text && aiKeyOf(text)) || (placeholder && aiKeyOf(placeholder)) || (labelText && aiKeyOf(labelText)) || undefined;
++  // stable codes used as labels (e.g. permission checkboxes "accounts view")
++  if (!key && /^[a-z][a-z0-9_]*( [a-z][a-z0-9_]*)+$/.test(aria)) key = aria.replace(/ /g, '.');
++  if (el.matches('[role="tab"]')) {
++    const k = el.getAttribute('data-key') ?? key;
++    if (k) el.setAttribute('data-ai-tab', k);
++    return;
++  }
++  if (el.matches('input, select, textarea, [role="combobox"]')) {
++    // controls inside table rows: the column header's key + the row index
++    const cell = el.closest('td');
++    if (!key && cell) {
++      const row = cell.parentElement as HTMLTableRowElement;
++      const table = cell.closest('table');
++      const th = table?.querySelectorAll('thead th')[(cell as HTMLTableCellElement).cellIndex];
++      const hk = th ? aiKeyOf((th.textContent ?? '').trim()) : undefined;
++      if (hk) {
++        key = hk;
++        if (row && !row.closest('[data-ai-row-id]')) row.setAttribute('data-ai-row-id', String(row.sectionRowIndex));
++      }
++    }
++    if (key) el.setAttribute('data-ai-field', key);
++    return;
++  }
++  if (el.matches('a[href]')) {
++    const href = el.getAttribute('href') ?? '';
++    if (href.startsWith('/')) el.setAttribute('data-ai-nav', '/' + aiPage(href.split('?')[0]));
++    if (key) el.setAttribute('data-ai-action', key);
++    return;
++  }
++  if (key) el.setAttribute('data-ai-action', key);
++}
++
++/**
++ * Tags interactive elements that are not rendered by the shared components
++ * (plain <button>/<a>/<input> in feature pages) from their translated label.
++ * Returns a disconnect function.
++ */
++export function startAiTagger(root: HTMLElement = document.body): () => void {
++  let queued = false;
++  const run = () => {
++    queued = false;
++    root.querySelectorAll(INTERACTIVE).forEach(tagOne);
++  };
++  const mo = new MutationObserver(() => {
++    if (!queued) {
++      queued = true;
++      requestAnimationFrame(run);
++    }
++  });
++  mo.observe(root, { childList: true, subtree: true });
++  run();
++  return () => mo.disconnect();
++}
+diff --git a/frontend/src/features/payroll/PayrollSettingsPage.tsx b/frontend/src/features/payroll/PayrollSettingsPage.tsx
+index d0c015b..d4123d3 100644
+--- a/frontend/src/features/payroll/PayrollSettingsPage.tsx
++++ b/frontend/src/features/payroll/PayrollSettingsPage.tsx
+@@ -216,7 +216,7 @@ function InsuranceDialog({ rule, onClose, onSaved }: { rule?: InsuranceRule; onC
+           <p className="muted" style={{ marginBottom: 8 }}>{t('payroll.eligibleHelp')}</p>
+           {errors.eligible_codes && <Alert>{t('validation.invalid')}</Alert>}
+           <div className="check-grid">
+-            {earnings.map((c) => <Checkbox key={c.code} label={`${componentName(c, lang)}${c.insurable ? ' ✓' : ''}`} checked={v.eligible_codes.includes(c.code)} onChange={(x) => toggle(c.code, x)} />)}
++            {earnings.map((c) => <Checkbox key={c.code} aiKey={`payroll.eligible.${c.code}`} label={`${componentName(c, lang)}${c.insurable ? ' ✓' : ''}`} checked={v.eligible_codes.includes(c.code)} onChange={(x) => toggle(c.code, x)} />)}
+           </div>
+         </fieldset>
+         <Field label={t('ui.notes')}><TextArea rows={2} value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} /></Field>
+diff --git a/frontend/src/i18n/I18nProvider.tsx b/frontend/src/i18n/I18nProvider.tsx
+index d219551..9761903 100644
+--- a/frontend/src/i18n/I18nProvider.tsx
++++ b/frontend/src/i18n/I18nProvider.tsx
+@@ -31,6 +31,14 @@ function lookup(dict: Dictionary, key: string): string | undefined {
+   return typeof cur === 'string' ? cur : undefined;
+ }
+ 
++// Tafakor AI tag: the most recent i18n key that produced each text, so shared
++// components can derive language-independent data-ai-* tags from their labels.
++const keyByText = new Map<string, string>();
++/** Returns the i18n key a visible text came from (undefined for data). */
++export function aiKeyOf(text: string): string | undefined {
++  return keyByText.get(text);
++}
++
+ function interpolate(s: string, params?: Params) {
+   if (!params) return s;
+   return s.replace(/\{(\w+)\}/g, (_, k) => (params[k] === undefined || params[k] === null ? '' : String(params[k])));
+@@ -69,7 +77,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
+     const dict = dictionaries[lang];
+     const tryT = (key: string, params?: Params) => {
+       const s = lookup(dict, key) ?? lookup(en, key);
+-      return s === undefined ? undefined : interpolate(s, params);
++      if (s === undefined) return undefined;
++      const out = interpolate(s, params);
++      keyByText.set(out, key);
++      return out;
+     };
+     return { lang, dir, setLang, tryT, t: (key, params) => tryT(key, params) ?? key };
+   }, [lang, dir, setLang]);
+diff --git a/frontend/src/layout/AppShell.tsx b/frontend/src/layout/AppShell.tsx
+index 24bf837..0d9a65e 100644
+--- a/frontend/src/layout/AppShell.tsx
++++ b/frontend/src/layout/AppShell.tsx
+@@ -1,5 +1,6 @@
+ import { Suspense, useEffect, useState, type ReactNode } from 'react';
+ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
++import { aiPage, startAiTagger } from '@/components/ui/aiTags';
+ import {
+   ArrowLeftRight, BarChart3, BookOpen, Boxes, Building2, CalendarRange, ClipboardList, FileClock, FileMinus, FileText,
+   Landmark, LayoutDashboard, ListTree, LogOut, Menu, Moon, Package, Receipt, Settings2, Shield, ShoppingCart, Sun,
+@@ -141,7 +142,7 @@ function NavSection({ item, can }: { item: NavItem; can: (p: string) => boolean
+       {open && (
+         <div id={id} className="nav-children">
+           {children.map((c) => (
+-            <NavLink key={c.to} to={c.to} end={c.end} className={({ isActive }) => `nav-link nav-sub ${isActive ? 'active' : ''}`}>
++            <NavLink key={c.to} to={c.to} end={c.end} data-ai-nav={c.to} className={({ isActive }) => `nav-link nav-sub ${isActive ? 'active' : ''}`}>
+               <span>{t(c.label)}</span>
+             </NavLink>
+           ))}
+@@ -160,8 +161,8 @@ export function LanguageSwitch() {
+   };
+   return (
+     <div className="lang-switch" role="group" aria-label="Language">
+-      <button type="button" lang="fa" aria-pressed={lang === 'fa'} onClick={() => change('fa')}>فارسی</button>
+-      <button type="button" lang="en" aria-pressed={lang === 'en'} onClick={() => change('en')}>English</button>
++      <button type="button" lang="fa" aria-pressed={lang === 'fa'} data-ai-action="shell.lang.fa" onClick={() => change('fa')}>فارسی</button>
++      <button type="button" lang="en" aria-pressed={lang === 'en'} data-ai-action="shell.lang.en" onClick={() => change('en')}>English</button>
+     </div>
+   );
+ }
+@@ -193,6 +194,7 @@ export function AppShell() {
+   const [navOpen, setNavOpen] = useState(false);
+   const location = useLocation();
+   const navigate = useNavigate();
++  useEffect(() => startAiTagger(), []); // Tafakor AI tags for plain elements (harmless data attributes)
+   useEffect(() => setNavOpen(false), [location.pathname]);
+ 
+   const companyName = lang === 'en' && me?.company.name_en ? me.company.name_en : me?.company.name;
+@@ -201,7 +203,7 @@ export function AppShell() {
+     <div className={`shell ${navOpen ? 'nav-open' : ''}`}>
+       <a href="#main" className="visually-hidden">{t('common.skipToContent')}</a>
+       <aside className="sidebar" aria-label={t('common.menu')}>
+-        <NavLink to="/" className="brand">
++        <NavLink to="/" className="brand" data-ai-nav="/">
+           <img src={logo} alt="" />
+           <span>
+             <span className="brand-name">{t('app.name')}</span>
+@@ -219,7 +221,7 @@ export function AppShell() {
+                 {items.map((i) => (i.children ? (
+                   <NavSection key={i.to} item={i} can={can} />
+                 ) : (
+-                  <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
++                  <NavLink key={i.to} to={i.to} end={i.end} data-ai-nav={i.to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                     {i.icon}
+                     <span>{t(i.label)}</span>
+                   </NavLink>
+@@ -247,6 +249,7 @@ export function AppShell() {
+           <span className="user-chip">
+             <span className="avatar" aria-hidden>{f.initials}</span>
+             <ActionMenu
++              aiKey="shell.userMenu"
+               label={me?.full_name}
+               items={[
+                 { label: me?.full_name ?? '', icon: <UserCog size={16} />, to: '/profile' },
+@@ -257,7 +260,7 @@ export function AppShell() {
+             />
+           </span>
+         </header>
+-        <main id="main" className="grow">
++        <main id="main" className="grow" data-ai-page={aiPage(location.pathname)}>
+           <ErrorBoundary resetKey={location.pathname}>
+             <Suspense fallback={<LoadingBlock />}>
+               <Outlet />

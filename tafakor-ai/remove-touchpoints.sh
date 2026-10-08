@@ -37,6 +37,13 @@ edit("backend/internal/server/middleware.go", [
 	}''', "func securityHeaders(hsts bool) func(http.Handler) http.Handler {"),
     ('h.Set("Permissions-Policy", permissions)', 'h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")'),
 ])
+edit("backend/internal/server/middleware.go", [
+    ("""
+
+// Unwrap lets http.ResponseController reach the underlying writer (Flush for
+// streamed responses such as the Tafakor AI /ai-api route).
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }""", ""),
+])
 edit("backend/internal/platform/config/config.go", [
     ("\tAIServiceURL   string // Tafakor AI add-on; empty disables the /ai-api route\n", ""),
     ('\t\tAIServiceURL:   strings.TrimSpace(os.Getenv("AI_SERVICE_URL")),\n', ""),
@@ -54,6 +61,7 @@ if "--tags" in sys.argv:
     # recorded patch is reverted with git if present.
     patch = os.path.join(root, "tafakor-ai", "tagging.patch")
     if os.path.exists(patch):
+        # tagging.patch = `git diff main -- frontend/src` at the time of the add-on build
         subprocess.check_call(["git", "apply", "-R", patch])
     else:
         print("tagging.patch not found; tags left in place (they are harmless)")
