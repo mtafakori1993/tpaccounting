@@ -83,3 +83,10 @@ Branch: `feature/tafakor-ai` (never pushed, never merged by the agent).
 - Found and fixed during live tests: request body unreadable after SSE headers (buffered now + HTTP test), core
   middleware hid `Flush` (Unwrap + test through the middleware chain), OCR misread (second reading), click on a link
   causing a full reload (page-scoped targeting), form unable to express party+account (UI capability check).
+
+### Phase 7 — Final verification: DONE (fresh throwaway stack, containerized AI service, real model through the proxy)
+- AI service unit/integration: 13 packages green (71 test functions). Widget: typecheck + 6 unit tests.
+- Core app: full backend suite incl. PostgreSQL integration tests green; frontend 57 tests + typecheck green.
+- Live scenarios on a fresh demo company: 32/32. SSE streaming end to end: 16 deltas over 8.9 s (not buffered).
+- Browser e2e (virtual cursor fills the real receipt form): 13/13. Tag coverage: 60 routes, 0 problems (fa + en).
+- Removal procedure verified (tree identical to `main`, builds and tests pass).

@@ -44,6 +44,10 @@ verification". The agent did not change the host proxy. Live model tests were ru
 (`test/run-host-ai.sh`, bound to the docker0 address only), which really goes through 127.0.0.1:8118.
 Alternatives: `network_mode: host` for the container, or a TCP relay. Rejected: they would change production
 networking or work around the proxy's access control.
+**Update (final verification, 06:56 local):** after a host/Docker restart the same proxy accepted connections from the
+Docker network (HTTP 200 from inside the AI container), and the whole final verification ran production-style
+(app → `/ai-api` → AI container → `host.docker.internal:8118` → OpenRouter). The proxy's source ACL is therefore
+environment-dependent: if it returns 403 again, allow the Docker subnet in the proxy configuration.
 
 D12. **GOPROXY build argument.** proxy.golang.org returns 403 for some modules from this network; the AI image takes
 `GOPROXY` as a build arg (default proxy.golang.org) so operators can use a mirror (tests used goproxy.cn).
