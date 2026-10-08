@@ -284,3 +284,22 @@ func TestAmountGuardCatchesWrongZeros(t *testing.T) {
 		t.Fatalf("derived unit price rejected: %s", fb)
 	}
 }
+
+// Smaller models put lookups into plans; they run as reads (no approval) and the model plans only the changes.
+func TestLookupsInAPlanRunAsReads(t *testing.T) {
+	h := newHarness(t, "admin")
+	h.ai.interp = `{"intent":"query","query":{"kind":"other"}}`
+	h.ai.planQueue = []string{`{"action":"plan","summary":"look up","steps":[{"id":"s1","tool":"parties.list","query":{"q":"Company X"}},{"id":"s2","tool":"parties.list","query":{"q":"$s1.items.0.name"}}]}`,
+		`{"action":"answer","text":"Company X is a customer."}`}
+	r, _ := talk(t, h, "", "who is Company X?")
+	if r.Last("approval") != nil || r.Last("message") == nil {
+		t.Fatalf("a lookup-only plan must not need approval: %+v", r.Events)
+	}
+	fb := h.ai.planPrompts[1]
+	if !strings.Contains(fb, "Read tools are not plan steps") || !strings.Contains(fb, `parties.list {"query":{"q":"Company X"}}`) {
+		t.Fatalf("lookup must be run and fed back:\n%s", fb)
+	}
+	if strings.Contains(fb, "$s1.items.0.name\"}} →") {
+		t.Fatal("a lookup depending on another lookup must not run with an unresolved reference")
+	}
+}

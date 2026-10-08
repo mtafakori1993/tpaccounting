@@ -56,6 +56,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	ai.Fallbacks = cfg.FallbackModels
 	acc := accounting.New(cfg.AccountingURL)
 	srv := httpapi.New(cfg, st, acc, ai)
 	wire(srv, cfg, st, acc, ai)

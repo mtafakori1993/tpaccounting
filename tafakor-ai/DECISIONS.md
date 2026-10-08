@@ -144,3 +144,12 @@ cannot fix it, nothing is proposed. Amounts are also shown formatted (with thous
 
 D32. **OpenRouter 402 "in-flight" credit errors** are retried with a short backoff (bounded); a plain 402 is not. Users see
 "the AI service's credit is not enough — ask the administrator" rather than a generic failure.
+
+D33. **Default model `google/gemini-2.5-flash-lite` (cost), with OpenRouter fallback `google/gemini-2.0-flash-001`.** Requested by
+the user because of price (~30× cheaper than Claude Sonnet). Consequences handled in code rather than prompts: (a) the smaller
+model puts lookups (list/get tools) into plans — these are now run immediately as reads (no approval) and the model re-plans
+only the changes with real ids; (b) the free shared capacity of flash-lite is sometimes "rate-limited upstream", so OpenRouter's
+`models` fallback list is sent (`OPENROUTER_FALLBACK_MODELS`). The deterministic guards (catalog validation, permissions,
+amount guard D31, approval binding) are model-independent, so a weaker model can fail to finish a task but cannot register a
+wrong amount or an unapproved change. Expect lower task completion than with Claude on complex multi-step requests; set
+`OPENROUTER_MODEL` back to a stronger model if that matters more than cost.

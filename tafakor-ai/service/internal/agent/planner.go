@@ -88,7 +88,7 @@ user's permissions). Use tool ids exactly. Never invent tools, fields or ids. "{
 Path parameters like {kind} or {id} go in "path". Examples of kinds: sales/{kind} and purchases/{kind} with kind = invoices | quotations | returns.
 
 RULES
-1. Discover first: use read tools to find existing records (e.g. parties.list with query q=<name>, products.list q=..., treasury.accounts.list,
+1. Discover first with action "read" (NEVER put read/list tools in a plan; a plan contains only changes). Use read tools to find existing records (e.g. parties.list with query q=<name>, products.list q=..., treasury.accounts.list,
    accounts.list q=..., expenses.categories.list). Use small page sizes. Only use ids you have READ or that an earlier step CREATES.
 2. If a record the request needs does not exist (e.g. a counterparty), plan a step that creates it with the required fields and what the user
    said (e.g. parties.create with name, kind, is_supplier/is_customer/is_other), then reference its id in later steps as "$s1.id".
@@ -332,6 +332,28 @@ func (a *Agent) runPlanner(ctx context.Context, u *User, t *store.Task, st *Stat
 			e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
 			return
 		case "plan":
+			// Lookups are not changes and never need approval. Smaller models put them in plans;
+			// run the independent ones now and let the model plan only the changes with real ids.
+			if lookups := planLookups(out.Steps); len(lookups) > 0 {
+				ran := 0
+				status(e, st.Lang, "searching")
+				for _, call := range lookups {
+					if ab, _ := json.Marshal(call.args()); refRe.Match(ab) || ran == 6 {
+						continue
+					}
+					p.Reads = append(p.Reads, a.planRead(ctx, u, t, call, e))
+					ran++
+				}
+				if len(p.Reads) > 30 {
+					p.Reads = p.Reads[len(p.Reads)-30:]
+				}
+				a.save(ctx, t, st)
+				a.audit(ctx, u, t.ID, "plan_lookups_run", map[string]any{"count": ran})
+				note = "Read tools are not plan steps. The lookups were run now (see read_results). Next: if the request was a question, " +
+					"answer it (action answer); otherwise propose a plan of ONLY the changes, using the actual ids and values from read_results " +
+					"(references like $s1.… only to earlier CHANGE steps). If a lookup depends on another lookup's result, use action read."
+				continue
+			}
 			steps, problem := a.validatePlan(u, p, out.Steps)
 			if problem != "" {
 				if strings.HasPrefix(problem, "permission:") {
@@ -376,6 +398,17 @@ func (a *Agent) planRead(ctx context.Context, u *User, t *store.Task, call plann
 	rec.OK, rec.Raw, rec.Result = true, b, truncate(string(b), 3500)
 	e.Emit("tool", map[string]any{"tool": call.Tool, "ok": true, "kind": "read"})
 	return rec
+}
+
+// planLookups returns the read-only steps of a proposed plan.
+func planLookups(calls []plannerCall) []plannerCall {
+	var out []plannerCall
+	for _, c := range calls {
+		if op, ok := catalog.Load().Get(c.Tool); ok && op.IsRead() {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // validatePlan checks every step against the catalog, permissions and the operation's schema.

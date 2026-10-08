@@ -49,7 +49,8 @@ See `.env.example` (all documented there). The most important:
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENROUTER_API_KEY` | – | model access (server side only) |
-| `OPENROUTER_MODEL` / `OPENROUTER_VISION_MODEL` | `anthropic/claude-sonnet-4.6` | chat/classification and vision models |
+| `OPENROUTER_MODEL` / `OPENROUTER_VISION_MODEL` | `google/gemini-2.5-flash-lite` | chat/classification and vision models |
+| `OPENROUTER_FALLBACK_MODELS` | `google/gemini-2.0-flash-001` | models OpenRouter tries when the main one is rate-limited (comma separated, ≤2) |
 | `OPENROUTER_PROXY_URL` | `http://host.docker.internal:8118` | proxy for model calls (credentials allowed in the URL) |
 | `SPEECH_BASE_URL`, `SPEECH_API_KEY`, `SPEECH_MODEL`, `SPEECH_PROXY_URL` | off | OpenAI-compatible transcription |
 | `AI_ACCOUNTING_URL` | `http://app:8085` | accounting app, always called directly |

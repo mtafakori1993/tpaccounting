@@ -101,6 +101,9 @@ type OpenRouter struct {
 	Timeout    time.Duration
 	MaxRetries int
 	AppTitle   string
+	// Fallbacks are tried by OpenRouter itself when the requested model is
+	// rate-limited or down (request field "models").
+	Fallbacks []string
 }
 
 func NewOpenRouter(baseURL, apiKey, model, proxyURL string, noProxy []string, timeout time.Duration) (*OpenRouter, error) {
@@ -179,6 +182,7 @@ func retryable(err error) bool {
 
 type chatBody struct {
 	Model          string         `json:"model"`
+	Models         []string       `json:"models,omitempty"`
 	Messages       []Message      `json:"messages"`
 	Stream         bool           `json:"stream"`
 	MaxTokens      int            `json:"max_tokens,omitempty"`
@@ -196,6 +200,17 @@ func (o *OpenRouter) Stream(ctx context.Context, req Request, onDelta func(strin
 	}
 	body := chatBody{Model: req.Model, Messages: req.Messages, Stream: true, MaxTokens: req.MaxTokens, Temperature: req.Temperature,
 		Usage: map[string]any{"include": true}}
+	if len(o.Fallbacks) > 0 {
+		body.Models = []string{req.Model}
+		for _, m := range o.Fallbacks {
+			if m != req.Model && len(body.Models) < 3 { // OpenRouter accepts at most 3 models
+				body.Models = append(body.Models, m)
+			}
+		}
+		if len(body.Models) == 1 {
+			body.Models = nil
+		}
+	}
 	if req.JSON {
 		body.ResponseFormat = map[string]any{"type": "json_object"}
 	}

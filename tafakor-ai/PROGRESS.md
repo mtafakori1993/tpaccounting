@@ -111,3 +111,9 @@ Branch: `feature/tafakor-ai` (never pushed, never merged by the agent).
   receivables, payables, profit comparison, stock alert, Iranicard balance, restricted perms refused, complex workflow.
   The complex workflow exposed the 150B amount slip → amount guard; wrong demo documents were cancelled. The re-run after
   the fix could not complete: the OpenRouter account has ~$0.17 left (HTTP 402).
+
+### Follow-up — switch to google/gemini-2.5-flash-lite: DONE (live re-run limited by credit)
+- Default model changed (config, compose, .env.example, README); OpenRouter fallback models; lookups-in-plans run as reads.
+- First live run on flash-lite: 7/14 — 6 failures were OpenRouter "rate-limited upstream" for flash-lite (now: fallback model),
+  2 were lookups placed in plans as approval steps (now: run as reads). Stock question re-run after the fix: PASS (60, matches the app).
+- Full re-run not possible: OpenRouter account credit ≈ $0.03.

@@ -28,6 +28,7 @@ type Config struct {
 	KnowledgeDir    string
 	LLM             Provider
 	VisionModel     string
+	FallbackModels  []string // OPENROUTER_FALLBACK_MODELS, comma separated
 	Speech          Provider
 	SpeechEnabled   bool
 	TTSEnabled      bool
@@ -51,7 +52,7 @@ func Load() (Config, error) {
 		LLM: Provider{
 			BaseURL:  strings.TrimRight(env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"), "/"),
 			APIKey:   os.Getenv("OPENROUTER_API_KEY"),
-			Model:    env("OPENROUTER_MODEL", "anthropic/claude-sonnet-4.6"),
+			Model:    env("OPENROUTER_MODEL", "google/gemini-2.5-flash-lite"),
 			ProxyURL: os.Getenv("OPENROUTER_PROXY_URL"),
 			Timeout:  time.Duration(envInt("OPENROUTER_TIMEOUT_SECONDS", 120)) * time.Second,
 		},
@@ -70,6 +71,11 @@ func Load() (Config, error) {
 		CompanyLockAuto: envBool("AI_COMPANY_LOCK_AUTO", false),
 	}
 	c.VisionModel = env("OPENROUTER_VISION_MODEL", c.LLM.Model)
+	for _, m := range strings.Split(env("OPENROUTER_FALLBACK_MODELS", "google/gemini-2.0-flash-001"), ",") {
+		if m = strings.TrimSpace(m); m != "" {
+			c.FallbackModels = append(c.FallbackModels, m)
+		}
+	}
 	c.SpeechEnabled = c.Speech.BaseURL != ""
 	for _, h := range strings.Split(env("AI_NO_PROXY", "localhost,127.0.0.1,app,db,tafakor-ai"), ",") {
 		if h = strings.TrimSpace(h); h != "" {

@@ -197,3 +197,21 @@ func TestCreditInFlight402IsRetriedThenSucceeds(t *testing.T) {
 		t.Fatalf("plain 402 must not be retried: %v %d", err, m.Load())
 	}
 }
+
+func TestFallbackModelsAreSentToOpenRouter(t *testing.T) {
+	var got string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = string(b)
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`+"\n\ndata: [DONE]\n\n")
+	}))
+	defer up.Close()
+	o, _ := NewOpenRouter(up.URL, "k", "google/gemini-2.5-flash-lite", "", nil, 5*time.Second)
+	o.Fallbacks = []string{"google/gemini-2.5-flash-lite", "google/gemini-2.0-flash-001"}
+	if _, err := o.Complete(context.Background(), Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, `"models":["google/gemini-2.5-flash-lite","google/gemini-2.0-flash-001"]`) {
+		t.Fatalf("fallbacks missing or duplicated: %s", got)
+	}
+}
