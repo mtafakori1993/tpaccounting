@@ -155,10 +155,11 @@ def main():
             check("advance: tagged with project cost center", tx["cost_center_id"] is not None)
             att = admin.req("GET", f"/api/v1/attachments?entity_type=treasury_transaction&entity_id={r['entity_id']}")
             check("advance: original receipt attached", len(att) == 1, str([a["file_name"] for a in att]))
-            audit = admin.req("GET", "/api/v1/audit?entity_type=treasury_transaction&entity_id=%d" % r["entity_id"])
+            audit = admin.req("GET", "/api/v1/audit?page_size=50")
             items = audit.get("items", audit) if isinstance(audit, dict) else audit
-            who = {i.get("user_name") or i.get("user_email") or i.get("user") for i in items} if items else set()
-            check("advance: accounting audit log attributes the document to the real user", any(w and "Admin" in str(w) for w in who) or bool(items), str(who))
+            mine = [i for i in items if i.get("action") == "create" and i.get("entity_id") == r["entity_id"]]
+            check("advance: accounting audit log attributes the document to the real user", bool(mine) and all(i.get("user_name") == "Demo Admin" for i in mine),
+                  str([(i.get("action"), i.get("user_name")) for i in mine]))
             ev = admin.stream(f"/ai-api/tasks/{tid}/pdf", {})
             f = last(ev, "file")
             check("advance: PDF generated", bool(f), f and f["url"])

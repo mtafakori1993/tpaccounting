@@ -161,8 +161,8 @@ export function LanguageSwitch() {
   };
   return (
     <div className="lang-switch" role="group" aria-label="Language">
-      <button type="button" lang="fa" aria-pressed={lang === 'fa'} onClick={() => change('fa')}>فارسی</button>
-      <button type="button" lang="en" aria-pressed={lang === 'en'} onClick={() => change('en')}>English</button>
+      <button type="button" lang="fa" aria-pressed={lang === 'fa'} data-ai-action="shell.lang.fa" onClick={() => change('fa')}>فارسی</button>
+      <button type="button" lang="en" aria-pressed={lang === 'en'} data-ai-action="shell.lang.en" onClick={() => change('en')}>English</button>
     </div>
   );
 }
@@ -249,6 +249,7 @@ export function AppShell() {
           <span className="user-chip">
             <span className="avatar" aria-hidden>{f.initials}</span>
             <ActionMenu
+              aiKey="shell.userMenu"
               label={me?.full_name}
               items={[
                 { label: me?.full_name ?? '', icon: <UserCog size={16} />, to: '/profile' },

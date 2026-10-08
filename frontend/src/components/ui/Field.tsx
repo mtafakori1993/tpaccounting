@@ -60,9 +60,9 @@ export function Select({ className = '', children, ...rest }: SelectHTMLAttribut
   );
 }
 
-export function Checkbox({ label, checked, onChange, disabled }: { label: ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+export function Checkbox({ label, checked, onChange, disabled, aiKey: tag }: { label: ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; aiKey?: string }) {
   return (
-    <label className="checkbox" data-ai-field={aiKey(label)}>
+    <label className="checkbox" data-ai-field={tag ?? aiKey(label)}>
       <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span>{label}</span>
     </label>

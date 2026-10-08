@@ -5,7 +5,8 @@ import { aiKeyOf } from '@/i18n/I18nProvider';
 
 /** The i18n key behind a label (string or the first string child), if any. */
 export function aiKey(node: ReactNode): string | undefined {
-  if (typeof node === 'string') return aiKeyOf(node);
+  // composite labels such as "Amount (IRR)" fall back to their translated part
+  if (typeof node === 'string') return aiKeyOf(node) ?? aiKeyOf(node.replace(/\s*\([^)]*\)\s*$/, ''));
   if (typeof node === 'number' || node === null || node === undefined || typeof node === 'boolean') return undefined;
   if (Array.isArray(node)) {
     for (const n of node) {
@@ -34,10 +35,34 @@ const INTERACTIVE = 'button, a[href], input, select, textarea, [role="button"], 
 function tagOne(el: Element) {
   if (el.closest('#tafakor-ai-host') || el.hasAttribute('data-ai-action') || el.hasAttribute('data-ai-nav') || el.closest('[data-ai-field]') ||
     el.hasAttribute('data-ai-tab') || el.hasAttribute('data-ai-option-id')) return;
-  const text = (el.getAttribute('aria-label') || el.getAttribute('title') || (el as HTMLElement).innerText || '').trim();
+  const aria = (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
+  const isControl = el.matches('input, select, textarea');
+  // form controls are named by aria-label or their <label>, never by their content (option texts)
+  const forLabel = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.textContent?.trim() ?? '' : '';
+  const text = (aria || forLabel || (isControl ? '' : (el as HTMLElement).innerText) || '').trim();
   const placeholder = el.getAttribute('placeholder') ?? '';
-  const key = (text && aiKeyOf(text)) || (placeholder && aiKeyOf(placeholder)) || undefined;
+  const labelText = (el.closest('label')?.textContent ?? '').trim();
+  let key = (text && aiKeyOf(text)) || (placeholder && aiKeyOf(placeholder)) || (labelText && aiKeyOf(labelText)) || undefined;
+  // stable codes used as labels (e.g. permission checkboxes "accounts view")
+  if (!key && /^[a-z][a-z0-9_]*( [a-z][a-z0-9_]*)+$/.test(aria)) key = aria.replace(/ /g, '.');
+  if (el.matches('[role="tab"]')) {
+    const k = el.getAttribute('data-key') ?? key;
+    if (k) el.setAttribute('data-ai-tab', k);
+    return;
+  }
   if (el.matches('input, select, textarea, [role="combobox"]')) {
+    // controls inside table rows: the column header's key + the row index
+    const cell = el.closest('td');
+    if (!key && cell) {
+      const row = cell.parentElement as HTMLTableRowElement;
+      const table = cell.closest('table');
+      const th = table?.querySelectorAll('thead th')[(cell as HTMLTableCellElement).cellIndex];
+      const hk = th ? aiKeyOf((th.textContent ?? '').trim()) : undefined;
+      if (hk) {
+        key = hk;
+        if (row && !row.closest('[data-ai-row-id]')) row.setAttribute('data-ai-row-id', String(row.sectionRowIndex));
+      }
+    }
     if (key) el.setAttribute('data-ai-field', key);
     return;
   }

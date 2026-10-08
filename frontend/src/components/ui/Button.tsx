@@ -41,7 +41,7 @@ export function IconButton({ label, icon, size = 'md', className = '', ...rest }
 
 export function LinkButton({ to, variant = 'secondary', icon, children, size = 'md' }: { to: string; variant?: Variant; icon?: ReactNode; children: ReactNode; size?: 'sm' | 'md' }) {
   return (
-    <Link to={to} className={`btn btn-${variant} ${size === 'sm' ? 'btn-sm' : ''}`} data-ai-action={aiKey(children)} data-ai-nav={to}>
+    <Link to={to} className={`btn btn-${variant} ${size === 'sm' ? 'btn-sm' : ''}`} data-ai-nav={to}>
       {icon}
       {children}
     </Link>

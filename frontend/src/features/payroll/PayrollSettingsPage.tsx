@@ -216,7 +216,7 @@ function InsuranceDialog({ rule, onClose, onSaved }: { rule?: InsuranceRule; onC
           <p className="muted" style={{ marginBottom: 8 }}>{t('payroll.eligibleHelp')}</p>
           {errors.eligible_codes && <Alert>{t('validation.invalid')}</Alert>}
           <div className="check-grid">
-            {earnings.map((c) => <Checkbox key={c.code} label={`${componentName(c, lang)}${c.insurable ? ' ✓' : ''}`} checked={v.eligible_codes.includes(c.code)} onChange={(x) => toggle(c.code, x)} />)}
+            {earnings.map((c) => <Checkbox key={c.code} aiKey={`payroll.eligible.${c.code}`} label={`${componentName(c, lang)}${c.insurable ? ' ✓' : ''}`} checked={v.eligible_codes.includes(c.code)} onChange={(x) => toggle(c.code, x)} />)}
           </div>
         </fieldset>
         <Field label={t('ui.notes')}><TextArea rows={2} value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} /></Field>

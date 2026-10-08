@@ -5,6 +5,7 @@ import { useI18n, type TKey } from '@/i18n/I18nProvider';
 import { useFormat } from '@/i18n/format';
 import { useClickOutside } from '@/lib/hooks';
 import { Popover } from './Popover';
+import { aiKey } from './aiTags';
 import { toBig } from '@/lib/decimal';
 
 export function PageHeader({ title, subtitle, crumbs, actions, meta }: { title: ReactNode; subtitle?: ReactNode; crumbs?: { label: string; to?: string }[]; actions?: ReactNode; meta?: ReactNode }) {
@@ -139,7 +140,7 @@ export function Tabs<K extends string>({ tabs, value, onChange, label }: { tabs:
   return (
     <div className="tabs" role="tablist" aria-label={label} onKeyDown={onKey}>
       {tabs.map((tb) => (
-        <button key={tb.key} data-key={tb.key} data-ai-tab={tb.key} role="tab" type="button" className="tab" aria-selected={value === tb.key} tabIndex={value === tb.key ? 0 : -1} onClick={() => onChange(tb.key)}>
+        <button key={tb.key} data-key={tb.key} data-ai-tab={tb.key || "all"} role="tab" type="button" className="tab" aria-selected={value === tb.key} tabIndex={value === tb.key ? 0 : -1} onClick={() => onChange(tb.key)}>
           {tb.label}
           {tb.count !== undefined && tb.count !== null && <span className={`tab-count ${tb.tone ?? ''}`}>{tb.count}</span>}
         </button>
@@ -158,7 +159,7 @@ export interface MenuItem {
   separator?: boolean;
 }
 
-export function ActionMenu({ items, label }: { items: MenuItem[]; label?: string }) {
+export function ActionMenu({ items, label, aiKey: tag }: { items: MenuItem[]; label?: string; aiKey?: string }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const pop = useRef<HTMLDivElement>(null);
@@ -168,7 +169,7 @@ export function ActionMenu({ items, label }: { items: MenuItem[]; label?: string
   if (!visible.length) return null;
   return (
     <div className="menu" ref={ref}>
-      <button ref={btn} type="button" className="btn btn-secondary btn-icon" aria-haspopup="menu" aria-expanded={open} aria-label={label ?? t('common.more')} title={label ?? t('common.more')} onClick={() => setOpen((o) => !o)}>
+      <button ref={btn} type="button" className="btn btn-secondary btn-icon" aria-haspopup="menu" aria-expanded={open} aria-label={label ?? t('common.more')} title={label ?? t('common.more')} data-ai-action={tag ?? (label ? aiKey(label) : 'common.more')} onClick={() => setOpen((o) => !o)}>
         <MoreHorizontal size={18} />
       </button>
       {open && (

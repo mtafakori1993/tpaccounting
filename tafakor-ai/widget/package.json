@@ -6,11 +6,15 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "map": "node scripts/crawl.mjs map",
+    "coverage": "node scripts/crawl.mjs coverage",
+    "e2e": "node scripts/e2e-ui.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",
     "happy-dom": "^17.6.3",
+    "playwright-core": "^1.56.1",
     "typescript": "5.8",
     "vitest": "^3.2.7"
   }
