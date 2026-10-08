@@ -120,7 +120,7 @@ Branch: `feature/tafakor-ai` (never pushed, never merged by the agent).
 
 ### Follow-up — full capability parity: DONE (live model re-run blocked by credit)
 - 225 operations; 220 executable through the assistant with the user's permissions (99 read, 41 confirmation,
-  80 approval of which 26 critical); 5 session/credential operations excluded by design.
+  80 approval of which 24 critical); 5 session/credential operations excluded by design.
 - New product operation: settle invoices with an existing receipt/payment + release (backend, UI, integration test);
   verified in the browser on the demo company (release → settle dialog → saved).
 - Generated passwords ($generate), upload operations, planner hand-over for fixed-flow dead ends, parity tests.
