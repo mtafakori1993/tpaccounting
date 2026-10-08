@@ -83,6 +83,13 @@ type Interpretation struct {
 	Query         Query    `json:"query"`
 	Reply         string   `json:"reply"`
 	Confidence    float64  `json:"confidence"`
+
+	// The user's explicit execution instruction. These are NOT model fields
+	// (json:"-"): they are derived deterministically from the user's own words in
+	// ParseInterpretation, so no content the model reads — least of all text inside
+	// an uploaded document — can make the assistant skip a confirmation.
+	ExecDirect  bool `json:"-"`
+	ExecPreview bool `json:"-"`
 }
 
 // Hint is a learned/company rule shown to the model as a suggestion.
@@ -253,6 +260,7 @@ func ParseInterpretation(text, userText string) (*Interpretation, error) {
 		it.Confidence = 0
 	}
 	it.ExplicitNull = append(it.ExplicitNull, DetectExplicitNulls(userText)...)
+	it.ExecDirect, it.ExecPreview = DetectExecutionIntent(userText)
 	// the user named the document explicitly: that decides the operation
 	if t := normalize.Text(userText); it.Intent == "register" || it.Intent == "operate" {
 		switch {
@@ -295,4 +303,45 @@ func DetectExplicitNulls(userText string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// directPhrases are the only unambiguous ways a user asks to register without a
+// confirmation (decision: a bare «ثبت کن» does NOT count, and neither does any
+// vague phrasing). Keep this list short and explicit.
+var directPhrases = []string{
+	"مستقیم ثبت کن", "مستقیم ثبت شود", "مستقیم ثبتش کن", "بدون تایید ثبت کن", "بدون تأیید ثبت کن",
+	"بدون تایید", "بدون تأیید", "تایید نمیخواد", "تأیید نمیخواهد", "تایید لازم نیست", "بدون تاییدیه",
+	"directly", "no confirmation", "without confirmation", "skip the confirmation", "don't ask me",
+	"dont ask me", "no approval needed", "without asking",
+}
+
+// previewPhrases are the unambiguous ways a user asks to see the operation on the
+// real screen instead of it being registered.
+var previewPhrases = []string{
+	"نشانم بده", "نشونم بده", "روی صفحه نشان بده", "روی صفحه نشون بده",
+	"باز کن که خودم ثبت کنم", "خودم ثبت کنم", "میخوام خودم ثبت کنم", "نشانم بده تا ثبت کنم",
+	"show me on screen", "show it on screen", "show me", "open the form", "let me fill it in", "i'll submit it myself",
+}
+
+// DetectExecutionIntent finds the user's explicit execution instruction in their own
+// words. It is deterministic and uses no model output, so document text inside an
+// upload can never trigger it (the user's message is the only input).
+func DetectExecutionIntent(userText string) (direct, preview bool) {
+	t := " " + normalize.Text(userText) + " "
+	for _, p := range previewPhrases {
+		if strings.Contains(t, normalize.Text(p)) {
+			preview = true
+		}
+	}
+	for _, p := range directPhrases {
+		if strings.Contains(t, normalize.Text(p)) {
+			direct = true
+		}
+	}
+	// "show me on screen" also contains "no confirmation"? No overlap, but if both
+	// appear, seeing it on screen is the safer reading and wins.
+	if preview {
+		direct = false
+	}
+	return direct, preview
 }

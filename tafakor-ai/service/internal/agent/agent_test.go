@@ -33,11 +33,12 @@ type fakeAcc struct {
 	parties     []map[string]any
 	stockDocs   []map[string]any
 	posts       int
+	users       []map[string]any // as received, including the password
 	srv         *httptest.Server
 }
 
 var adminPerms = []string{"parties.create", "parties.edit", "products.view", "products.create", "inventory.view", "inventory.create", "inventory.post", "parties.view", "cost_centers.view", "treasury.view", "treasury.create", "treasury.post", "treasury.cancel",
-	"expenses.view", "expenses.create", "expenses.post", "expenses.cancel", "accounts.view", "company.view", "sales.view", "settings.edit"}
+	"expenses.view", "expenses.create", "expenses.post", "expenses.cancel", "accounts.view", "company.view", "sales.view", "settings.edit", "users.view", "users.create"}
 var viewerPerms = []string{"parties.view", "cost_centers.view", "treasury.view", "expenses.view", "accounts.view", "company.view"}
 
 func newFakeAcc(t *testing.T) *fakeAcc {
@@ -279,6 +280,16 @@ func newFakeAcc(t *testing.T) *fakeAcc {
 		f.mu.Unlock()
 		w.WriteHeader(201)
 		js(w, map[string]any{"id": 1})
+	})
+	mux.HandleFunc("POST /api/v1/users", func(w http.ResponseWriter, r *http.Request) {
+		var in map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		f.mu.Lock()
+		f.users = append(f.users, in)
+		id := len(f.users)
+		f.mu.Unlock()
+		w.WriteHeader(201)
+		js(w, map[string]any{"id": id, "email": in["email"], "full_name": in["full_name"]})
 	})
 	mux.HandleFunc("GET /api/v1/attachments", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()

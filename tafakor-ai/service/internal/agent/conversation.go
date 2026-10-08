@@ -187,7 +187,9 @@ func (a *Agent) withConversation(ctx context.Context, u *User, convID string, e 
 }
 
 // followUpStages: the operation is still open and a new message continues it.
-var followUpStages = map[string]bool{StageQuestion: true, StageApproval: true, StageUIFailed: true, StageStopped: true}
+// StageUIPreview is included: the form is open for the user to save by hand, but they
+// may equally change their mind and ask the assistant to register it after all.
+var followUpStages = map[string]bool{StageQuestion: true, StageApproval: true, StageUIFailed: true, StageStopped: true, StageUIPreview: true}
 
 // activeOperation returns the open register task of the conversation, if any.
 func (a *Agent) activeOperation(ctx context.Context, u *User, c *conversation) (*store.Task, *State) {

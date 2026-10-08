@@ -47,6 +47,7 @@ type Operation struct {
 	AccountingImp  string   `json:"accounting_impact,omitempty"`
 	UIExists       bool     `json:"ui_exists"`
 	UIEntryPoints  []string `json:"ui_entry_points,omitempty"`
+	Critical       bool     `json:"critical,omitempty"` // security/configuration/period control: approval card shows a strong warning
 	Notes          []string `json:"notes,omitempty"`
 }
 
@@ -91,7 +92,7 @@ func (c *Catalog) Get(id string) (*Operation, bool) {
 
 // Executable reports whether the assistant may ever call this operation.
 func (o *Operation) Executable() bool {
-	return o.Classification != NotSupported && o.Classification != NotSafe && !o.Multipart
+	return o.Classification != NotSupported && o.Classification != NotSafe
 }
 
 // IsRead: no side effects.
@@ -129,14 +130,30 @@ var readOnlyFields = map[string]bool{"id": true, "balance": true, "created_at": 
 
 // InputFields lists the writable body fields.
 func (o *Operation) InputFields() []Field {
+	names := map[string]bool{}
+	for _, f := range o.Body {
+		names[f.Name] = true
+	}
 	var out []Field
 	for _, f := range o.Body {
-		if readOnlyFields[f.Name] || strings.HasSuffix(f.Name, "_name") {
+		if readOnlyFields[f.Name] || responseOnlyName(f.Name, names) {
 			continue
 		}
 		out = append(out, f)
 	}
 	return out
+}
+
+// responseOnlyName reports whether a "<x>_name" field is the display name joined
+// from the reference field "<x>_id" (party_name with party_id) and is therefore
+// never writable. A name that has no matching id — notably treasury bank_name — is
+// a real input field and must be visible to the planner (this was the reported bug:
+// a required bank_name was stripped from the contract).
+func responseOnlyName(name string, has map[string]bool) bool {
+	if !strings.HasSuffix(name, "_name") {
+		return false
+	}
+	return has[strings.TrimSuffix(name, "_name")+"_id"]
 }
 
 // Line is the compact one-line description used in the planner's catalog.
@@ -157,14 +174,18 @@ func (o *Operation) Line() string {
 				n += "=" + strings.Join(f.Enum, "|")
 			}
 			if len(f.Fields) > 0 && strings.HasPrefix(f.Type, "[]") {
-				var sub []string
+				sub := map[string]bool{}
 				for _, s := range f.Fields {
-					if readOnlyFields[s.Name] || strings.HasSuffix(s.Name, "_name") {
+					sub[s.Name] = true
+				}
+				var names []string
+				for _, s := range f.Fields {
+					if readOnlyFields[s.Name] || responseOnlyName(s.Name, sub) {
 						continue
 					}
-					sub = append(sub, s.Name)
+					names = append(names, s.Name)
 				}
-				n += "[" + strings.Join(sub, ",") + "]"
+				n += "[" + strings.Join(names, ",") + "]"
 			}
 			names = append(names, n)
 		}

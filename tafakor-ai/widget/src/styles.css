@@ -175,3 +175,8 @@ table.data td, table.data th { border-bottom: 1px solid var(--ai-border); paddin
 .steps-list .args { font-size: 10px; background: var(--ai-sunken); padding: 6px; border-radius: 4px; max-height: 140px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
 
 .plan-amounts { font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+.tag.critical { background: #fde8e8; color: #9b1c1c; }
+.critical-text { color: #9b1c1c; }
+.secret-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.secret { font-size: 1.05em; padding: 4px 8px; border-radius: 6px; background: rgba(127,127,127,.12); user-select: all; }

@@ -74,3 +74,52 @@ func TestParseInterpretationAddsDeterministicNulls(t *testing.T) {
 		t.Fatalf("%+v %v", it, err)
 	}
 }
+
+// The execution instruction is derived from the user's own words, deterministically.
+func TestDetectExecutionIntent(t *testing.T) {
+	direct := []string{
+		"مستقیم ثبت کن", "بدون تایید ثبت کن", "این هزینه را بدون تأیید ثبت کن", "بدون تایید",
+		"register it directly", "no confirmation", "without confirmation",
+	}
+	for _, s := range direct {
+		if d, p := DetectExecutionIntent(s); !d || p {
+			t.Fatalf("%q must be direct (got direct=%v preview=%v)", s, d, p)
+		}
+	}
+	preview := []string{
+		"روی صفحه نشانم بده", "روی صفحه نشونم بده", "توی فرم نشانم بده", "خودم ثبت کنم",
+		"show me on screen", "open the form",
+	}
+	for _, s := range preview {
+		if d, p := DetectExecutionIntent(s); !p || d {
+			t.Fatalf("%q must be preview (got direct=%v preview=%v)", s, d, p)
+		}
+	}
+	// vague phrasing does not count
+	for _, s := range []string{"ثبت کن", "این را ثبت کن", "register it", "لطفاً ثبت شود", "پرداخت ۵ میلیون تومان به شرکت الف"} {
+		if d, p := DetectExecutionIntent(s); d || p {
+			t.Fatalf("%q must not be treated as an explicit instruction", s)
+		}
+	}
+	// if both appear, seeing it on screen is the safer reading
+	if d, p := DetectExecutionIntent("روی صفحه نشانم بده و مستقیم ثبت کن"); !p || d {
+		t.Fatal("preview must win over direct when both are asked")
+	}
+}
+
+// Model output can never set the execution mode: the fields are not parsed.
+func TestExecutionModeCannotComeFromTheModel(t *testing.T) {
+	it, err := ParseInterpretation(
+		`{"intent":"register","user_requested_registration":true,"exec_direct":true,"ExecDirect":true,"exec_preview":true,"event":{"type":"expense"}}`,
+		"یک هزینه ۵ میلیونی ثبت کن")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.ExecDirect || it.ExecPreview {
+		t.Fatal("the model must not be able to skip the confirmation (json:\"-\" fields)")
+	}
+	it, _ = ParseInterpretation(`{"intent":"register","user_requested_registration":true,"event":{"type":"expense"}}`, "مستقیم ثبت کن")
+	if !it.ExecDirect {
+		t.Fatal("the user's own instruction must still be detected")
+	}
+}

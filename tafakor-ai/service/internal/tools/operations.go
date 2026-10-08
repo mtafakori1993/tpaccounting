@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -181,6 +182,13 @@ func runOperation(op *catalog.Operation) func(context.Context, Env, json.RawMess
 				return nil, fmt.Errorf("%w (%s)", ErrNoPermission, missing)
 			}
 		}
+		if op.Multipart {
+			return runMultipart(ctx, env, op, &a)
+		}
+		secrets, err := generateSecrets(&a)
+		if err != nil {
+			return nil, err
+		}
 		q := url.Values{}
 		for k, v := range a.Query {
 			q.Set(k, v)
@@ -221,8 +229,121 @@ func runOperation(op *catalog.Operation) func(context.Context, Env, json.RawMess
 		} else {
 			out = rawOut
 		}
+		if len(secrets) > 0 {
+			return WithSecrets{Result: out, Secrets: secrets}, nil
+		}
 		return out, nil
 	}
+}
+
+// SecretGenerate is the only value the assistant may put in a password field: the
+// service generates a strong temporary password at execution time. The approval
+// (payload hash), the plan state, the audit log and the model only ever see this
+// placeholder; the generated value is shown once to the user.
+const SecretGenerate = "$generate"
+
+// SecretFields are body fields that carry credentials.
+var SecretFields = map[string]bool{"password": true, "new_password": true}
+
+// WithSecrets is a result that carries generated credentials. Marshalling it yields
+// only the result, so secrets cannot leak into stored state by accident.
+type WithSecrets struct {
+	Result  json.RawMessage
+	Secrets map[string]string
+}
+
+func (w WithSecrets) MarshalJSON() ([]byte, error) { return w.Result, nil }
+
+func generateSecrets(a *OpArgs) (map[string]string, error) {
+	if len(a.Body) == 0 {
+		return nil, nil
+	}
+	var obj map[string]any
+	if json.Unmarshal(a.Body, &obj) != nil {
+		return nil, nil
+	}
+	var secrets map[string]string
+	for k, v := range obj {
+		if !SecretFields[k] {
+			continue
+		}
+		sv, _ := v.(string)
+		switch sv {
+		case "":
+			continue
+		case SecretGenerate:
+			pw := newPassword()
+			obj[k] = pw
+			if secrets == nil {
+				secrets = map[string]string{}
+			}
+			secrets[k] = pw
+		default:
+			return nil, fmt.Errorf("%w: %s must be %q (a temporary password is generated and shown once to the user)", ErrInvalidInput, k, SecretGenerate)
+		}
+	}
+	if secrets != nil {
+		a.Body, _ = json.Marshal(obj)
+	}
+	return secrets, nil
+}
+
+func newPassword() string {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return string(b[:4]) + "-" + string(b[4:8]) + "-" + string(b[8:12]) + "-" + string(b[12:])
+}
+
+var uploadIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{6,64}$`)
+
+// runMultipart sends a file the user uploaded in the assistant (upload_id) to an
+// upload endpoint of the application, with the remaining body keys as form fields.
+func runMultipart(ctx context.Context, env Env, op *catalog.Operation, a *OpArgs) (any, error) {
+	var obj map[string]any
+	if len(a.Body) > 0 {
+		if err := json.Unmarshal(a.Body, &obj); err != nil {
+			return nil, fmt.Errorf("%w: body must be a JSON object", ErrInvalidInput)
+		}
+	}
+	uid, _ := obj["upload_id"].(string)
+	if !uploadIDRe.MatchString(uid) {
+		return nil, fmt.Errorf("%w: upload_id (a file the user attached in this conversation) is required for %s", ErrInvalidInput, op.ID)
+	}
+	if env.Files == nil || env.Me == nil {
+		return nil, fmt.Errorf("%w: no file store", ErrInvalidInput)
+	}
+	name, content, err := env.Files.Read(ctx, env.Me.Company.ID, env.Me.ID, uid)
+	if err != nil {
+		return nil, fmt.Errorf("%w: upload_id not found among this user's files", ErrInvalidInput)
+	}
+	fields := map[string]string{}
+	for k, v := range obj {
+		if k == "upload_id" || v == nil {
+			continue
+		}
+		switch x := v.(type) {
+		case string:
+			fields[k] = x
+		case float64:
+			fields[k] = strconv.FormatFloat(x, 'f', -1, 64)
+		case bool:
+			fields[k] = strconv.FormatBool(x)
+		default:
+			return nil, fmt.Errorf("%w: form field %s must be a string, number or boolean", ErrInvalidInput, k)
+		}
+	}
+	var rawOut []byte
+	if err := env.Acc.Multipart(ctx, env.Cred, accounting.Call{Method: op.Method, Path: BuildPath(op, a)}, fields, name, content, &rawOut); err != nil {
+		return nil, err
+	}
+	if len(rawOut) == 0 {
+		return json.RawMessage(`{"ok":true}`), nil
+	}
+	return json.RawMessage(rawOut), nil
 }
 
 var ErrNotAllowed = fmt.Errorf("the assistant may not perform this operation")

@@ -187,6 +187,31 @@ func (c *Client) Upload(ctx context.Context, cred Credentials, entityType string
 	return c.send(req, out)
 }
 
+// Multipart sends a form with one file ("file") to any upload endpoint as the user.
+func (c *Client) Multipart(ctx context.Context, cred Credentials, call Call, fields map[string]string, fileName string, content []byte, out any) error {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		_ = w.WriteField(k, v)
+	}
+	fw, err := w.CreateFormFile("file", fileName)
+	if err != nil {
+		return err
+	}
+	if _, err := fw.Write(content); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	req, err := c.newRequest(ctx, cred, call, &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	return c.send(req, out)
+}
+
 // Raw fetches a binary resource (e.g. a PDF) as the user.
 func (c *Client) Raw(ctx context.Context, cred Credentials, call Call) ([]byte, string, error) {
 	var body io.Reader

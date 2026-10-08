@@ -26,7 +26,7 @@ func TestCreatesMissingCounterpartyThenContinuesThePayment(t *testing.T) {
 	h.ai.planQueue = []string{iranicardRead, iranicardPlan}
 	r1, conv := talk(t, h, "", "ایرانیکارت را به عنوان طرف حساب بساز و بعد پرداخت ۵ میلیون تومانی را ثبت کن.")
 	if r1.Last("error") != nil || r1.Last("approval") == nil {
-		t.Fatalf("expected a plan waiting for approval: %+v", r1.Events)
+		t.Fatalf("expected a plan waiting for approval: %+v\nPROMPTS:%s", r1.Events, strings.Join(h.ai.planPrompts, "\n----\n"))
 	}
 	prev := r1.Last("preview").(map[string]any)
 	steps := prev["steps"].([]map[string]any)
@@ -112,20 +112,107 @@ func TestPlannerGetsFeedbackForInventedToolsAndFields(t *testing.T) {
 	}
 }
 
-func TestRestrictedOperationsAreNeverExecuted(t *testing.T) {
+// Parity: security operations (here: creating a user) run like any other operation the user may do,
+// with human approval and a critical warning. Passwords never pass through the model, the plan state,
+// the audit log or the transcript: the system generates one and shows it once.
+func TestSecurityOperationsRunWithApprovalAndAGeneratedPassword(t *testing.T) {
 	h := newHarness(t, "admin")
 	h.ai.interp = `{"intent":"operate","user_requested_registration":true}`
 	h.ai.planQueue = []string{
-		`{"action":"plan","steps":[{"id":"s1","tool":"users.create","body":{"email":"x@y","full_name":"X"}}]}`,
-		`{"action":"answer","text":"I can't manage users; an administrator does that in Settings → Users."}`,
+		`{"action":"plan","steps":[{"id":"s1","tool":"users.create","body":{"email":"ali@demo.test","full_name":"Ali","role_id":2,"password":"hunter2hunter2"}}]}`,
+		`{"action":"plan","summary":"create user Ali","steps":[{"id":"s1","tool":"users.create","body":{"email":"ali@demo.test","full_name":"Ali","role_id":2,"password":"$generate"},"purpose":"create user Ali"}]}`,
 	}
-	r, _ := talk(t, h, "", "make a new admin user for Ali")
-	if r.Last("approval") != nil || !strings.Contains(h.ai.planPrompts[1], "NOT_SAFE_TO_AUTOMATE") || r.Last("message") == nil {
-		t.Fatalf("user management must be refused: %+v", r.Events)
+	r, _ := talk(t, h, "", "make a new user for Ali")
+	if !strings.Contains(h.ai.planPrompts[1], "never write a password") {
+		t.Fatalf("a model-written password must be refused:\n%s", h.ai.planPrompts[1])
 	}
-	// and the registry itself refuses even a forged call
-	if _, err := h.a.Tools.Call(context.Background(), h.a.env(h.user), "users.create", json.RawMessage(`{"body":{}}`), &tools.Authorization{}); err == nil {
-		t.Fatal("restricted operation reachable through the registry")
+	ap, ok := r.Last("approval").(map[string]any)
+	if !ok {
+		t.Fatalf("user creation must be offered for approval, not refused: %+v", r.Events)
+	}
+	steps := r.Last("preview").(map[string]any)["steps"].([]map[string]any)
+	if steps[0]["critical"] != true || steps[0]["classification"] != "REQUIRES_APPROVAL" {
+		t.Fatalf("security operations need approval with a critical warning: %+v", steps[0])
+	}
+	rec := &Recorder{}
+	h.a.Approve(context.Background(), h.user, ap["task_id"].(string), ApproveRequest{Token: ap["token"].(string)}, rec)
+	if rec.Last("result") == nil || len(h.acc.users) != 1 {
+		t.Fatalf("user not created: %+v", rec.Events)
+	}
+	pw, _ := h.acc.users[0]["password"].(string)
+	if len(pw) < 16 || pw == "$generate" {
+		t.Fatalf("a strong password must be generated, got %q", pw)
+	}
+	sec, _ := rec.Last("secret").(map[string]any)
+	if sec == nil || fmt.Sprint(sec["values"]) != fmt.Sprint(map[string]string{"password": pw}) {
+		t.Fatalf("the generated password must be shown once to the user: %+v", rec.Events)
+	}
+	// nowhere else: not in the stored task/conversation, the audit log or anything the model sees
+	task, _ := h.st.GetTask(context.Background(), h.user.Scope, ap["task_id"].(string))
+	audit, _ := h.st.ListAudit(context.Background(), h.user.Scope, ap["task_id"].(string), 500)
+	ab, _ := json.Marshal(audit)
+	convs, _ := json.Marshal(task)
+	for name, blob := range map[string]string{"task": string(convs), "audit": string(ab), "prompts": strings.Join(h.ai.planPrompts, "")} {
+		if strings.Contains(blob, pw) {
+			t.Fatalf("generated password leaked into %s", name)
+		}
+	}
+	// a user without the permission cannot (same rule as the app)
+	v := newHarness(t, "viewer")
+	v.ai.interp = h.ai.interp
+	v.ai.planQueue = []string{`{"action":"plan","steps":[{"id":"s1","tool":"users.create","body":{"email":"x@y","full_name":"X","password":"$generate"}}]}`}
+	rv, _ := talk(t, v, "", "make a new user")
+	if rv.Last("approval") != nil || len(v.acc.users) != 0 {
+		t.Fatal("a viewer must not be able to create users through the assistant")
+	}
+}
+
+// Session/credential operations are the only exclusions; the registry refuses them even when forged.
+func TestSessionOperationsAreNotBusinessOperations(t *testing.T) {
+	h := newHarness(t, "admin")
+	h.ai.interp = `{"intent":"operate","user_requested_registration":true}`
+	h.ai.planQueue = []string{`{"action":"plan","steps":[{"id":"s1","tool":"auth.logout.create","body":{}}]}`,
+		`{"action":"answer","text":"You are signed in; signing out is done from your profile menu."}`}
+	r, _ := talk(t, h, "", "log me out")
+	if r.Last("approval") != nil || !strings.Contains(h.ai.planPrompts[1], "session/credential operation") {
+		t.Fatalf("sign-out must not be planned: %+v", r.Events)
+	}
+	if _, err := h.a.Tools.Call(context.Background(), h.a.env(h.user), "auth.login.create", json.RawMessage(`{"body":{}}`), &tools.Authorization{}); err == nil {
+		t.Fatal("session operation reachable through the registry")
+	}
+}
+
+// Upload endpoints receive the file the user attached in the conversation.
+func TestUploadOperationsUseTheUsersAttachedFile(t *testing.T) {
+	h := newHarness(t, "admin")
+	id := h.upload(t)
+	args := json.RawMessage(`{"body":{"entity_type":"treasury_transaction","entity_id":"7","upload_id":"` + id + `"}}`)
+	auth := &tools.Authorization{PayloadHash: tools.PayloadHash("attachments.create", args), Mode: "human"}
+	if _, err := h.a.Tools.Call(context.Background(), h.a.env(h.user), "attachments.create", args, auth); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.acc.attachments["treasury_transaction:7"]; len(got) != 1 || got[0] != "receipt.png" {
+		t.Fatalf("file not sent to the app: %v", h.acc.attachments)
+	}
+	bad := json.RawMessage(`{"body":{"entity_type":"treasury_transaction","entity_id":"7","upload_id":"not-a-real-upload"}}`)
+	if _, err := h.a.Tools.Call(context.Background(), h.a.env(h.user), "attachments.create", bad, &tools.Authorization{PayloadHash: tools.PayloadHash("attachments.create", bad)}); err == nil {
+		t.Fatal("an unknown upload id must be refused")
+	}
+}
+
+// A request the fixed flows cannot finish (here a transfer) goes to the planner instead of "please do it in the app".
+func TestFixedFlowDeadEndsAreHandedToThePlanner(t *testing.T) {
+	h := newHarness(t, "admin")
+	h.ai.queue = []string{`{"intent":"register","user_requested_registration":true,"event":{"type":"transfer","amount":"10000000","currency":"IRT","date":"2025-10-07"}}`}
+	h.ai.planQueue = []string{`{"action":"plan","summary":"transfer","steps":[{"id":"s1","tool":"treasury.transactions.create","body":{"kind":"transfer","date":"2025-10-07","treasury_account_id":1,"to_treasury_account_id":2,"amount":"100000000"},"purpose":"transfer cash to bank"}]}`}
+	r, _ := talk(t, h, "", "۱۰ میلیون تومان از صندوق به بانک منتقل کن")
+	if r.Last("approval") == nil {
+		t.Fatalf("transfer must be planned: %+v", r.Events)
+	}
+	for _, ev := range r.Events {
+		if strings.Contains(fmt.Sprint(ev.Data), "Treasury →") || strings.Contains(fmt.Sprint(ev.Data), "پشتیبانی نمی") {
+			t.Fatalf("must not send the user to the app: %+v", ev)
+		}
 	}
 }
 

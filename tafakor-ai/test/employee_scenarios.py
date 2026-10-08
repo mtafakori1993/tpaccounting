@@ -157,10 +157,34 @@ def main():
     paid = [t for t in after_tx if (t.get("party_name") or "") == "ایرانیکارت" and eq(t["amount"], "150000000")]
     check("workflow: purchase invoice + payment from Mellat completed", len(after_tx) == before_tx + 1 and bool(paid), f"{before_tx}->{len(after_tx)}")
 
-    # Restricted operation: the assistant must not do it
-    ev, _ = converse(c, "به کاربر viewer@demo.test دسترسی مدیر سیستم بده.", approve=False)
-    roles_before = json.dumps(items(get(c, "/users")), ensure_ascii=False)
-    check("restricted: changing permissions is refused", last(ev, "approval") is None, ((last(ev, "message") or {}).get("text") or "")[:160])
+    # Parity (examples from the requirement): anything the user can do in the app, the assistant does.
+    # 12. New bank account with an opening balance
+    ev, _ = converse(c, "یک حساب بانک رفاه بساز و موجودی اولیه آن را ۱۰ میلیون تومان ثبت کن.", replies=["بله"])
+    refah = [a for a in items(get(c, "/treasury/accounts")) if "رفاه" in a["name"]]
+    check("parity: Refah bank account created with opening balance 100,000,000 IRR", bool(refah) and eq(refah[0].get("balance", "0"), "100000000"),
+          json.dumps(refah, ensure_ascii=False)[:200])
+
+    # 13. Transfer between own accounts (was "not supported, use Treasury → New transfer")
+    before = len(items(get(c, "/treasury/transactions?kind=transfer&page_size=200")))
+    ev, _ = converse(c, "۵ میلیون تومان از بانک ملت برداشت کن و به صندوق اضافه کن.", replies=["بله"])
+    tr = items(get(c, "/treasury/transactions?kind=transfer&page_size=200"))
+    check("parity: transfer Mellat → cash 50,000,000 IRR", len(tr) == before + 1 and any(eq(t["amount"], "50000000") for t in tr), f"{before}->{len(tr)}")
+
+    # 14. Settle an invoice with an existing receipt (new core operation)
+    ev, _ = converse(c, "دریافت‌های قبلی Company X را با فاکتورهای باز آن تسویه کن.", replies=["بله"])
+    tools_used = [d.get("tool") for e, d in ev if e == "tool"]
+    check("parity: existing receipt allocated to open invoices", "treasury.transactions.allocations" in tools_used, str(tools_used))
+
+    # 15. User management: a viewer cannot (same as in the app); an admin can, with approval and a generated password
+    v = Client("viewer@demo.test", "Viewer-Passw0rd!")
+    ev, _ = converse(v, "برای علی یک کاربر جدید بساز.", approve=False)
+    check("permissions: viewer cannot create users through the assistant", last(ev, "approval") is None,
+          ((last(ev, "message") or last(ev, "error") or {}).get("text") or (last(ev, "error") or {}).get("message") or "")[:160])
+    before = len(items(get(c, "/users")))
+    ev, _ = converse(c, "برای علی با ایمیل ali@demo.test یک کاربر با نقش بیننده بساز.", replies=["بله"])
+    secret = last(ev, "secret")
+    check("parity: admin creates a user (approval + one-time generated password)", len(items(get(c, "/users"))) == before + 1 and bool(secret),
+          str(bool(secret)))
 
     print("\n=== SUMMARY")
     failed = [r for r in RESULTS if not r[1]]

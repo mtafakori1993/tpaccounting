@@ -56,6 +56,7 @@ type Operation struct {
 	AccountingImp  string   `json:"accounting_impact,omitempty"`
 	UIExists       bool     `json:"ui_exists"`
 	UIEntryPoints  []string `json:"ui_entry_points,omitempty"`
+	Critical       bool     `json:"critical,omitempty"`
 	Notes          []string `json:"notes,omitempty"`
 }
 
@@ -75,14 +76,17 @@ type Catalog struct {
 // ---------- package loading ----------
 
 type pkg struct {
-	name    string
-	files   []*ast.File
-	funcs   map[string]*ast.FuncDecl // "Recv.Name" and "Name"
-	types   map[string]*ast.TypeSpec
-	vars    map[string]ast.Expr // package-level var/const values
-	reqs    map[string]bool     // field names validated as required anywhere in the package
-	enums   map[string][]string // field name → allowed values (from v.Check(x == "a" || x == "b", "field", …))
-	imports map[string]string   // per-package union: alias → dir name
+	name  string
+	files []*ast.File
+	funcs map[string]*ast.FuncDecl // "Recv.Name" and "Name"
+	types map[string]*ast.TypeSpec
+	vars  map[string]ast.Expr // package-level var/const values
+	reqs  map[string]bool     // field names validated as required in functions without a typed input
+	// typeReqs: required fields validated in a function that takes the input type T
+	// (e.g. CreateTx(…, in TxInput)); they apply to T and the types nested in it only.
+	typeReqs map[string]map[string]bool
+	enums    map[string][]string // field name → allowed values (from v.Check(x == "a" || x == "b", "field", …))
+	imports  map[string]string   // per-package union: alias → dir name
 }
 
 var fset = token.NewFileSet()
@@ -94,7 +98,7 @@ func loadPkg(dir string) *pkg {
 		return p
 	}
 	p := &pkg{name: dir, funcs: map[string]*ast.FuncDecl{}, types: map[string]*ast.TypeSpec{}, vars: map[string]ast.Expr{},
-		reqs: map[string]bool{}, enums: map[string][]string{}, imports: map[string]string{}}
+		reqs: map[string]bool{}, typeReqs: map[string]map[string]bool{}, enums: map[string][]string{}, imports: map[string]string{}}
 	pkgs[dir] = p
 	matches, _ := filepath.Glob(filepath.Join(internalDir, dir, "*.go"))
 	for _, f := range matches {
@@ -139,38 +143,65 @@ func loadPkg(dir string) *pkg {
 				}
 			}
 		}
-		ast.Inspect(af, func(n ast.Node) bool {
-			c, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			if sel, ok := c.Fun.(*ast.SelectorExpr); ok {
-				switch sel.Sel.Name {
-				case "Required", "RequiredID":
-					if len(c.Args) > 0 {
-						if s, ok := strLit(c.Args[0]); ok {
-							p.reqs[s] = true
-						}
+		for _, d := range af.Decls {
+			// the input types of the function decide where its "required" checks apply
+			var inputs []string
+			if fd, ok := d.(*ast.FuncDecl); ok && fd.Type.Params != nil {
+				for _, f := range fd.Type.Params.List {
+					t := f.Type
+					if st, ok := t.(*ast.StarExpr); ok {
+						t = st.X
 					}
-				case "Check":
-					if len(c.Args) == 3 {
-						if field, ok := strLit(c.Args[1]); ok {
-							if vals := enumValues(c.Args[0]); len(vals) > 1 {
-								p.enums[field] = mergeEnum(p.enums[field], vals)
+					if id, ok := t.(*ast.Ident); ok && ast.IsExported(id.Name) {
+						inputs = append(inputs, id.Name)
+					}
+				}
+			}
+			markReq := func(field string) {
+				if len(inputs) == 0 {
+					p.reqs[field] = true
+					return
+				}
+				for _, in := range inputs {
+					if p.typeReqs[in] == nil {
+						p.typeReqs[in] = map[string]bool{}
+					}
+					p.typeReqs[in][field] = true
+				}
+			}
+			ast.Inspect(d, func(n ast.Node) bool {
+				c, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				if sel, ok := c.Fun.(*ast.SelectorExpr); ok {
+					switch sel.Sel.Name {
+					case "Required", "RequiredID":
+						if len(c.Args) > 0 {
+							if s, ok := strLit(c.Args[0]); ok {
+								markReq(s)
 							}
 						}
-					}
-					if len(c.Args) == 3 {
-						if code, ok := strLit(c.Args[2]); ok && code == "required" {
-							if s, ok := strLit(c.Args[1]); ok {
-								p.reqs[s] = true
+					case "Check":
+						if len(c.Args) == 3 {
+							if field, ok := strLit(c.Args[1]); ok {
+								if vals := enumValues(c.Args[0]); len(vals) > 1 {
+									p.enums[field] = mergeEnum(p.enums[field], vals)
+								}
+							}
+						}
+						if len(c.Args) == 3 {
+							if code, ok := strLit(c.Args[2]); ok && code == "required" {
+								if s, ok := strLit(c.Args[1]); ok {
+									markReq(s)
+								}
 							}
 						}
 					}
 				}
-			}
-			return true
-		})
+				return true
+			})
+		}
 	}
 	return p
 }
@@ -203,6 +234,7 @@ type env struct {
 	recv   map[string]string // receiver composite-literal fields (Module, Side)
 	objs   map[string]objRef // locals bound to &pkg.Type{...}
 	module string
+	root   string // the request type whose fields are being described (for typeReqs)
 }
 
 type objRef struct {
@@ -674,7 +706,15 @@ func (e *env) fieldsOf(t ast.Expr, depth int) []Field {
 	if !ok {
 		return nil
 	}
-	sub := &env{p: p}
+	root := e.root
+	if root == "" {
+		root = spec.Name.Name
+	}
+	rootReqs := e.p.typeReqs[root]
+	if rp := p.typeReqs[root]; rp != nil {
+		rootReqs = rp
+	}
+	sub := &env{p: p, root: root}
 	var out []Field
 	for _, f := range st.Fields.List {
 		if len(f.Names) == 0 { // embedded
@@ -696,7 +736,7 @@ func (e *env) fieldsOf(t ast.Expr, depth int) []Field {
 		if !ast.IsExported(f.Names[0].Name) {
 			continue
 		}
-		fld := Field{Name: name, Type: typeString(f.Type), Required: p.reqs[name], Enum: p.enums[name]}
+		fld := Field{Name: name, Type: typeString(f.Type), Required: p.reqs[name] || rootReqs[name], Enum: p.enums[name]}
 		if depth < 2 {
 			if _, isBasic := basic[strings.TrimLeft(fld.Type, "*[]")]; !isBasic {
 				fld.Fields = sub.fieldsOf(f.Type, depth+1)
@@ -749,15 +789,23 @@ func classify(op *Operation) {
 	act := strings.ToLower(op.Action + " " + last)
 	destructive := op.Kind == "delete" || strings.Contains(act, "cancel") || strings.Contains(act, "unpost") || strings.Contains(act, "void") ||
 		strings.Contains(act, "revers") || strings.Contains(act, "reopen") || strings.Contains(act, "close") || strings.Contains(act, "archive")
+	// Parity rule: whatever the signed-in user may do in the app, the assistant may do
+	// for them — limited only by the user's permissions, approval and confirmation.
+	// The only exclusions are session/credential operations, which are not business
+	// operations (the user is already signed in; credentials never pass through chat).
 	switch {
+	case p == "/auth/me":
+		op.Classification, op.Risk = "READ_ONLY", "low"
+	case p == "/auth/preferences":
+		op.Classification, op.Risk = "REQUIRES_USER_CONFIRMATION", "low"
 	case strings.HasPrefix(p, "/auth") || strings.HasPrefix(p, "/setup"):
 		op.Classification, op.Risk = "NOT_SUPPORTED_BY_AI", "high"
-		op.Notes = append(op.Notes, "authentication/setup is never performed by the assistant")
+		op.Notes = append(op.Notes, "session/credential operation (sign-in, sign-out, first-time setup, changing your own password with the current one): not a business operation; credentials never pass through chat")
 	case op.Kind == "read" || op.Kind == "export" || op.Kind == "compute":
 		op.Classification, op.Risk = "READ_ONLY", "low"
 	case notSafePaths.MatchString(p) || hasPrefixAny(p, notSafeModules):
-		op.Classification, op.Risk = "NOT_SAFE_TO_AUTOMATE", "high"
-		op.Notes = append(op.Notes, "security, configuration or period control: the assistant reads it but a human changes it in the app")
+		op.Classification, op.Risk, op.Critical = "REQUIRES_APPROVAL", "critical", true
+		op.Notes = append(op.Notes, "security, configuration or period control: always approved by a human, shown with a critical warning")
 	case destructive:
 		op.Classification, op.Risk = "REQUIRES_APPROVAL", "high"
 		op.Notes = append(op.Notes, "cancel/delete/reverse: always approved by a human, never automatic")
@@ -767,6 +815,15 @@ func classify(op *Operation) {
 		op.Notes = append(op.Notes, "payroll, check and budget lifecycle steps are always approved by a human")
 	default:
 		op.Classification, op.Risk = "REQUIRES_USER_CONFIRMATION", "medium"
+	}
+	if op.Multipart {
+		// the file comes from the user's upload in the assistant
+		op.Body = appendField(op.Body, Field{Name: "upload_id", Type: "file", Required: true})
+	}
+	for _, f := range op.Body {
+		if f.Name == "password" || f.Name == "new_password" {
+			op.Notes = append(op.Notes, "password fields only accept \"$generate\": a temporary password is generated and shown once to the user")
+		}
 	}
 	// accounting impact (from the module's automatic accounting, see the accounting model guide)
 	switch {
@@ -1012,18 +1069,24 @@ func markdown(c Catalog) string {
 	}
 	sort.Strings(cl)
 	b.WriteString(strings.Join(cl, " · ") + "\n\n")
-	b.WriteString("Classification → AI behaviour: `READ_ONLY` runs without asking; `REQUIRES_USER_CONFIRMATION` shows an approval card (receipts, payments and expenses may run automatically within the user's limits); `REQUIRES_APPROVAL` always needs a human, never automatic; `NOT_SAFE_TO_AUTOMATE` is readable but never executed by the assistant; `NOT_SUPPORTED_BY_AI` is never called. Every call runs with the signed-in user's own permissions.\n\n")
-	b.WriteString("| Module | Capability (tool) | Method & path | UI | Backend | AI tool | AI can execute | Confirmation | Permission | Inputs (required*) | Status |\n|---|---|---|:-:|:-:|:-:|---|---|---|---|---|\n")
+	b.WriteString("Parity rule: the assistant can perform every operation the signed-in user can perform in the app, with the user's own permissions. " +
+		"`READ_ONLY` runs without asking; `REQUIRES_USER_CONFIRMATION` shows an approval card (receipts, payments and expenses may run automatically within the user's limits); " +
+		"`REQUIRES_APPROVAL` always needs a human (critical ones — security, configuration, period control — carry a strong warning); " +
+		"`NOT_SUPPORTED_BY_AI` is limited to sign-in/sign-out/setup/own-password, which are session operations, not business operations.\n\n")
+	b.WriteString("| Module | Capability (tool) | Method & path | Human can do it (UI) | Backend exists | AI tool exists | AI can do it | Permission | Confirmation | Approval | Implementation missing | Inputs (required*) |\n|---|---|---|:-:|:-:|:-:|:-:|---|:-:|:-:|---|---|\n")
 	for _, o := range c.Operations {
-		exec := map[string]string{"READ_ONLY": "READ", "REQUIRES_USER_CONFIRMATION": "YES", "REQUIRES_APPROVAL": "YES (human)", "NOT_SAFE_TO_AUTOMATE": "NO", "NOT_SUPPORTED_BY_AI": "NO", "FULLY_AUTONOMOUS": "YES"}[o.Classification]
-		conf := map[string]string{"READ_ONLY": "no", "REQUIRES_USER_CONFIRMATION": "configurable", "REQUIRES_APPROVAL": "always", "NOT_SAFE_TO_AUTOMATE": "admin in app", "NOT_SUPPORTED_BY_AI": "—"}[o.Classification]
-		status := map[string]string{"READ_ONLY": "Ready", "REQUIRES_USER_CONFIRMATION": "Ready", "REQUIRES_APPROVAL": "Ready (gated)", "NOT_SAFE_TO_AUTOMATE": "Restricted", "NOT_SUPPORTED_BY_AI": "Excluded"}[o.Classification]
+		ai := "YES"
 		tool := "yes"
-		if o.Classification == "NOT_SUPPORTED_BY_AI" || o.Multipart {
-			tool = "no"
-			if o.Multipart {
-				status = "Upload via widget"
-			}
+		missing := "—"
+		if o.Classification == "NOT_SUPPORTED_BY_AI" {
+			ai, tool, missing = "no (session op)", "no", "— (by design)"
+		} else if o.Classification == "READ_ONLY" {
+			ai = "YES (read)"
+		}
+		conf := map[string]string{"READ_ONLY": "no", "REQUIRES_USER_CONFIRMATION": "yes (auto within limits)", "REQUIRES_APPROVAL": "yes", "NOT_SUPPORTED_BY_AI": "—"}[o.Classification]
+		appr := map[string]string{"READ_ONLY": "no", "REQUIRES_USER_CONFIRMATION": "no", "REQUIRES_APPROVAL": "always", "NOT_SUPPORTED_BY_AI": "—"}[o.Classification]
+		if o.Critical {
+			appr = "always (critical)"
 		}
 		var in []string
 		for _, f := range o.Body {
@@ -1040,6 +1103,9 @@ func markdown(c Catalog) string {
 		if perm == "" && len(o.InnerPerms) > 0 {
 			perm = "in handler: " + strings.Join(o.InnerPerms, ", ")
 		}
+		if perm == "" {
+			perm = "signed in"
+		}
 		ui := "no"
 		if o.UIExists {
 			ui = "yes"
@@ -1048,7 +1114,7 @@ func markdown(c Catalog) string {
 		if len(inputs) > 160 {
 			inputs = inputs[:157] + "…"
 		}
-		b.WriteString(fmt.Sprintf("| %s | `%s` | %s `%s` | %s | yes | %s | %s | %s | %s | %s | %s |\n", o.Module, o.ID, o.Method, o.Path, ui, tool, exec, conf, perm, inputs, status))
+		b.WriteString(fmt.Sprintf("| %s | `%s` | %s `%s` | %s | yes | %s | %s | %s | %s | %s | %s | %s |\n", o.Module, o.ID, o.Method, o.Path, ui, tool, ai, perm, conf, appr, missing, inputs))
 	}
 	b.WriteString("\n## Backend operations without a UI call (Phase 12-D)\n\n")
 	b.WriteString("Static analysis only. Verified by hand: `sales.kind.create` and `purchases.kind.create` DO have a UI (the forms post to a URL held in a variable); the `/payroll/periods/{id}/<action>` routes are aliases of UI-used payroll routes. See REPORT.md, Phase 12 findings.\n\n")

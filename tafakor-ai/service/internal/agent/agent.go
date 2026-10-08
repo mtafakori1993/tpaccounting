@@ -17,6 +17,7 @@ import (
 
 	"github.com/tafakorpardazan/tafakor-ai/internal/accounting"
 	"github.com/tafakorpardazan/tafakor-ai/internal/approval"
+	"github.com/tafakorpardazan/tafakor-ai/internal/catalog"
 	"github.com/tafakorpardazan/tafakor-ai/internal/classify"
 	"github.com/tafakorpardazan/tafakor-ai/internal/duplicates"
 	"github.com/tafakorpardazan/tafakor-ai/internal/extract"
@@ -401,7 +402,7 @@ func (a *Agent) register(ctx context.Context, u *User, t *store.Task, st *State,
 		}
 	}
 	unclassified := p.Question != nil && p.Question.Field == "event_type"
-	if (p.StopCode == "missing_record" || p.Action == "create_invoice" || p.Action == "create_purchase" || unclassified) && st.Plan == nil {
+	if (p.StopCode != "" || p.Action == "create_invoice" || p.Action == "create_purchase" || unclassified) && st.Plan == nil {
 		// a record the operation needs does not exist: plan it (create it first, then continue)
 		a.audit(ctx, u, t.ID, "handover_to_planner", map[string]any{"reason": p.StopCode})
 		a.startPlan(ctx, u, t, st, nil, e)
@@ -488,12 +489,25 @@ func (a *Agent) decide(ctx context.Context, u *User, t *store.Task, st *State, c
 	}
 	cs, _ := a.Store.GetCompanySettings(ctx, u.Scope.CompanyID)
 	autoToday, _ := a.Store.CountAutoToday(ctx, u.Scope, startOfDay(a.now()))
+	// How the operation can be carried out. Derived from the operation's own contract
+	// (catalog Spec) — not invented here — so "directly" and "show me on screen" are
+	// only offered when the operation and the app's forms actually support them.
+	classification, supportsDirect, supportsPreview := "", !policy.NeverAuto[p.Action], false
+	if op, ok := catalog.Load().Get(p.Action); ok {
+		spec := op.Spec()
+		classification, supportsDirect, supportsPreview = op.Classification, spec.SupportsDirect, spec.SupportsUIPreview
+	} else if p.Tx != nil || p.Expense != nil {
+		// the built-in receipt/payment/expense operations have real forms
+		supportsPreview = true
+	}
 	facts := policy.Facts{
 		Action: p.Action, Amount: amount, Currency: strings.ToUpper(cfg.BaseCurrency),
 		Duplicate: len(dups) > 0, Conflict: p.Flags.Conflict, Ambiguous: p.Flags.Ambiguous, LowConfidence: p.Flags.LowConfidence || anyLow(st.Extractions),
 		PeriodBlocked: !periodOK, BudgetEvent: cfg.BudgetsActive && (p.Action == "create_expense" || p.Action == "create_payment") || budgetConfirm(p),
 		ValidationIssue: validation || p.Flags.AssumedDate, NotRequested: p.Flags.NotRequested, FromDocumentText: p.Flags.FromDocumentText,
 		ForeignCurrency: p.Flags.ForeignCurrency, LearnedSuggest: p.Flags.LearnedSuggest, HasPermission: hasPerm,
+		Classification: classification, SupportsDirect: supportsDirect, SupportsPreview: supportsPreview,
+		ExplicitDirect: st.ExecDirect || st.PendingDirect, ExplicitPreview: st.ExecPreview,
 	}
 	d := policy.Decide(policy.Input{Facts: facts, Settings: settings, CompanyLock: cs.LockAuto || a.EnvLockAuto, AutoToday: autoToday, AskThisTime: st.AskThisTime})
 	st.Decision = &d
@@ -503,18 +517,41 @@ func (a *Agent) decide(ctx context.Context, u *User, t *store.Task, st *State, c
 		"limits": map[string]any{"max_amount": settings.MaxAmount, "max_per_day": settings.MaxPerDay, "auto_actions": settings.AutoActions}})
 
 	preview := map[string]any{"action": p.Action, "display": p.Display, "preview": p.Preview, "notes": p.Notes, "flags": p.Flags,
-		"duplicates": dups, "decision": d, "reasons": reasonTexts(st.Lang, d.Reasons), "period": periodReason}
+		"duplicates": dups, "decision": d, "reasons": reasonTexts(st.Lang, d.Reasons), "warnings": reasonTexts(st.Lang, d.Warnings), "period": periodReason}
 	e.Emit("preview", preview)
 
-	switch d.Mode {
-	case policy.Blocked:
+	// "Show me on screen": open the real form, pre-filled, without registering anything.
+	if d.Action == policy.ActionUIPreview {
+		if plan, err := BuildPreviewPlan(st); err == nil {
+			plan.TaskID = t.ID
+			st.Stage = StageUIPreview
+			st.PendingDirect = false
+			a.save(ctx, t, st)
+			a.audit(ctx, u, t.ID, "ui_preview", plan)
+			e.Emit("ui_plan", plan)
+			e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
+			return
+		}
+		// The form cannot express this exact payload: fall back to a confirmation card.
+		d.Action = policy.ActionConfirm
+		st.Decision = &d
+	}
+
+	switch d.Action {
+	case policy.ActionBlocked:
 		a.stop(ctx, u, t, st, e, tr(st.Lang, "You don't have permission to do this in the accounting app, so I can't do it either.",
 			"شما در نرم‌افزار حسابداری مجوز این کار را ندارید، پس من هم نمی‌توانم انجام دهم."))
-	case policy.Auto:
+	case policy.ActionDirect:
 		st.Approved = true
+		st.PendingDirect = false
 		a.save(ctx, t, st)
 		a.execute(ctx, u, t, st, &tools.Authorization{PayloadHash: tools.PayloadHash(p.Action, args), Mode: "auto", TaskID: t.ID}, e)
 	default:
+		// Remember the explicit "directly" instruction for the following turns of the
+		// same operation, so filling in a missing field does not silently drop it.
+		if st.ExecDirect {
+			st.PendingDirect = true
+		}
 		tok, exp, err := a.Approvals.Issue(ctx, u.Scope, t.ID, st.PayloadHash)
 		if err != nil {
 			a.fail(ctx, u, t, st, e, a.plain(st.Lang, err), err)
@@ -524,7 +561,9 @@ func (a *Agent) decide(ctx context.Context, u *User, t *store.Task, st *State, c
 		a.save(ctx, t, st)
 		status(e, st.Lang, "waiting")
 		e.Emit("approval", map[string]any{"task_id": t.ID, "token": tok, "expires_at": exp, "payload_hash": st.PayloadHash,
-			"reasons": reasonTexts(st.Lang, d.Reasons), "duplicate": len(dups) > 0, "simulated": d.Simulated, "would_auto": d.WouldAuto})
+			"reasons": reasonTexts(st.Lang, d.Reasons), "warnings": reasonTexts(st.Lang, d.Warnings),
+			"action": d.Action, "duplicate": len(dups) > 0, "simulated": d.Simulated, "would_auto": d.WouldAuto,
+			"can_preview": supportsPreview, "can_direct": supportsDirect})
 		e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
 	}
 }

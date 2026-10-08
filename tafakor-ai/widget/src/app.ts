@@ -472,6 +472,9 @@ class Widget {
             turn.insertBefore(this.resultCard(d), statusEl);
             this.speak(d.summary);
             break;
+          case 'secret':
+            turn.insertBefore(this.secretCard(d), statusEl);
+            break;
           case 'offers':
             turn.insertBefore(this.offersCard(d), statusEl);
             break;
@@ -554,6 +557,17 @@ class Widget {
     return card;
   }
 
+  /** A generated password: shown once, never stored in the transcript. */
+  secretCard(d: any) {
+    const card = h('div', { class: 'card' }, h('h4', {}, t('secretTitle')), h('div', { class: 'hint' }, t('secretHelp')));
+    for (const [k, v] of Object.entries(d.values ?? {})) {
+      const code = h('code', { class: 'secret', dir: 'ltr' }, String(v));
+      card.append(h('div', { class: 'secret-row' }, h('span', {}, k), code,
+        h('button', { class: 'btn', onclick: () => { void navigator.clipboard?.writeText(String(v)); } }, t('copy'))));
+    }
+    return card;
+  }
+
   planCard(p: any) {
     const card = h('div', { class: 'card' }, h('h4', {}, p.display?.description || t('planTitle')));
     const done: string[] = p.completed ?? [];
@@ -561,7 +575,9 @@ class Widget {
     const list = h('ol', { class: 'steps-list' });
     for (const s of p.steps ?? []) {
       const badge = s.classification === 'REQUIRES_APPROVAL' ? t('needsApproval') : t('needsConfirmation');
-      const li = h('li', {}, h('div', {}, h('b', {}, s.purpose || s.tool), ' ', h('span', { class: 'tag' }, badge)),
+      const li = h('li', {}, h('div', {}, h('b', {}, s.purpose || s.tool), ' ', h('span', { class: 'tag' }, badge),
+        s.critical ? h('span', { class: 'tag critical' }, t('critical')) : null),
+        s.critical ? h('div', { class: 'hint critical-text' }, t('criticalHelp')) : null,
         h('div', { class: 'hint', dir: 'ltr' }, `${s.method} ${s.path}`),
         s.accounting_impact ? h('div', { class: 'hint' }, s.accounting_impact) : null,
         s.amounts?.length ? h('div', { class: 'plan-amounts', dir: 'ltr' }, (s.amounts as string[]).join(' · ')) : null);

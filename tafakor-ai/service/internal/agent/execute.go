@@ -63,6 +63,12 @@ func (a *Agent) execute(ctx context.Context, u *User, t *store.Task, st *State, 
 			a.decide(ctx, u, t, st, cfg, e)
 			return
 		}
+		// The app named the fields it rejected: ask for exactly those, keeping everything
+		// already collected, instead of failing the whole operation (D36).
+		if ae, ok := accounting.AsAPIError(err); ok && ae.Status == 422 && len(ae.Fields) > 0 && st.Frame != nil {
+			a.recoverValidation(ctx, u, t, st, e, ae)
+			return
+		}
 		a.fail(ctx, u, t, st, e, a.plain(st.Lang, err), err)
 		return
 	}
@@ -85,6 +91,25 @@ func errString(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+// recoverValidation turns an application validation error that names fields into one
+// targeted question. The operation stays open with everything already collected, so
+// the user's answer continues the same workflow instead of starting it again (D36).
+func (a *Agent) recoverValidation(ctx context.Context, u *User, t *store.Task, st *State, e Emitter, ae *accounting.APIError) {
+	names := fieldNames(ae.Fields)
+	st.Stage = StageQuestion
+	st.Message = apiErrorText(st.Lang, ae)
+	st.Proposal = &classify.Proposal{Question: &classify.Question{ID: fmt.Sprintf("fields:%s", strings.Join(names, ",")), Field: "details", FreeText: true,
+		Text: tr(st.Lang, "The accounting app needs a different value for: ", "نرم‌افزار حسابداری مقدار دیگری برای اینها لازم دارد: ") + strings.Join(names, ", ") +
+			tr(st.Lang, ". Tell me and I will register the same operation with it.", ". بگویید تا همان عملیات را با آن ثبت کنم.")},
+		Suggested: map[string]classify.Choice{}}
+	a.save(ctx, t, st)
+	status(e, st.Lang, "question")
+	a.audit(ctx, u, t.ID, "validation_question", map[string]any{"code": ae.Code, "fields": ae.Fields})
+	e.Emit("message", map[string]any{"text": apiErrorText(st.Lang, ae)})
+	e.Emit("question", st.Proposal.Question)
+	e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
 }
 
 // finish records the outcome, grows trust in used rules and emits the verified summary.
@@ -335,6 +360,9 @@ type ApproveRequest struct {
 	Token       string `json:"token"`
 	PayloadHash string `json:"payload_hash"`
 	ExecMode    string `json:"exec_mode"`
+	// Preview opens the operation's real form, pre-filled, and submits nothing: the
+	// user reviews and saves it themselves. It changes no data.
+	Preview bool `json:"preview"`
 }
 
 // Approve consumes the single-use token for the payload stored on the task. The
@@ -364,6 +392,28 @@ func (a *Agent) approveIn(ctx context.Context, u *User, id string, req ApproveRe
 	}
 	if req.ExecMode == "ui" || req.ExecMode == "api" {
 		st.ExecMode = req.ExecMode
+	}
+	// "Show me on screen": the user reviewed this exact payload and chose to fill the
+	// real form themselves. The token is consumed (so the approval card cannot be
+	// replayed into a registration) but nothing is executed and no idempotency record
+	// is written; the widget opens the form pre-filled and submits nothing.
+	if req.Preview {
+		plan, err := BuildPreviewPlan(st)
+		if err != nil {
+			a.audit(ctx, u, t.ID, "ui_preview_unavailable", map[string]any{"error": err.Error()})
+			e.Emit("error", map[string]any{"message": tr(st.Lang, "This operation's screen can't represent these exact details, so there is nothing to pre-fill. Register it and I'll report the result.",
+				"صفحه این عملیات نمی‌تواند دقیقاً همین جزئیات را نشان دهد، پس چیزی برای پیش‌پر کردن نیست. ثبتش کنم و نتیجه را گزارش می‌دهم.")})
+			e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
+			return
+		}
+		plan.TaskID = t.ID
+		st.Stage = StageUIPreview
+		st.PendingDirect = false
+		a.save(ctx, t, st)
+		a.audit(ctx, u, t.ID, "ui_preview", map[string]any{"by": u.Me.Email, "steps": len(plan.Steps)})
+		e.Emit("ui_plan", plan)
+		e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
+		return
 	}
 	st.Approved, st.ApprovedBy = true, u.Scope.UserID
 	a.audit(ctx, u, t.ID, "approved", map[string]any{"by": u.Me.Email, "payload_hash": recomputed, "exec_mode": st.ExecMode})

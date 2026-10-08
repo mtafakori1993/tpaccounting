@@ -22,6 +22,7 @@ const (
 	StageQuestion  = "awaiting_answer"
 	StageApproval  = "awaiting_approval"
 	StageUIRunning = "ui_running"
+	StageUIPreview = "ui_preview" // the real form is open, pre-filled, waiting to be submitted by hand
 	StageUIFailed  = "ui_failed"
 	StageDone      = "done"
 	StageCancelled = "cancelled"
@@ -40,6 +41,9 @@ type Upload struct {
 type Result struct {
 	EntityType    string   `json:"entity_type"`
 	EntityID      int64    `json:"entity_id"`
+	Type          string   `json:"type,omitempty"` // canonical type, e.g. sales_quotation
+	Side          string   `json:"side,omitempty"` // sales | purchase
+	Kind          string   `json:"kind,omitempty"` // quotation | invoice | return | receipt | payment | …
 	Number        int64    `json:"number"`
 	JournalNumber *int64   `json:"journal_number,omitempty"`
 	Amount        string   `json:"amount"`
@@ -83,13 +87,36 @@ type State struct {
 	ConversationID string                   `json:"conversation_id,omitempty"`
 	Plan           *PlanState               `json:"plan,omitempty"` // capability-driven multi-step operation
 	Model          string                   `json:"model,omitempty"`
+
+	// Execution instruction, from the user's own words. PendingDirect persists across
+	// the follow-up turns of one operation so multi-turn fills stay direct.
+	ExecDirect    bool `json:"exec_direct,omitempty"`
+	ExecPreview   bool `json:"exec_preview,omitempty"`
+	PendingDirect bool `json:"pending_direct,omitempty"`
+	// Active is the document this task is about (set when a reference was resolved).
+	Active *Artifact `json:"active,omitempty"`
 }
 
 // Target is an existing document a task acts on (undo, attach, pdf).
 type Target struct {
 	EntityType string `json:"entity_type"`
 	EntityID   int64  `json:"entity_id"`
-	Label      string `json:"label"`
+	Label      string `json:"label,omitempty"`
+	Side       string `json:"side,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+}
+
+// Artifact is a document the assistant created, changed or was told about. It is
+// remembered in the conversation so a later pronoun (این / همین / رسیدش / pdf این)
+// resolves to the exact record without searching the database.
+type Artifact struct {
+	Type   string `json:"type"` // canonical, e.g. sales_quotation, treasury_receipt, expense
+	ID     int64  `json:"id"`
+	Number int64  `json:"number,omitempty"`
+	Side   string `json:"side,omitempty"` // sales | purchase
+	Kind   string `json:"kind,omitempty"` // quotation | invoice | return | receipt | payment | …
+	Label  string `json:"label,omitempty"`
+	At     int64  `json:"at,omitempty"` // unix seconds, for "the last one"
 }
 
 // Emitter streams server-sent events to the widget.

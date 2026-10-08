@@ -272,6 +272,11 @@
         {
           "name": "entity_id",
           "type": "form"
+        },
+        {
+          "name": "upload_id",
+          "type": "file",
+          "required": true
         }
       ],
       "multipart": true,
@@ -330,7 +335,8 @@
         "features/settings/ProfilePage.tsx"
       ],
       "notes": [
-        "authentication/setup is never performed by the assistant"
+        "session/credential operation (sign-in, sign-out, first-time setup, changing your own password with the current one): not a business operation; credentials never pass through chat",
+        "password fields only accept \"$generate\": a temporary password is generated and shown once to the user"
       ]
     },
     {
@@ -361,7 +367,8 @@
         "features/auth/LoginPage.tsx"
       ],
       "notes": [
-        "authentication/setup is never performed by the assistant"
+        "session/credential operation (sign-in, sign-out, first-time setup, changing your own password with the current one): not a business operation; credentials never pass through chat",
+        "password fields only accept \"$generate\": a temporary password is generated and shown once to the user"
       ]
     },
     {
@@ -379,7 +386,7 @@
         "auth/AuthProvider.tsx"
       ],
       "notes": [
-        "authentication/setup is never performed by the assistant"
+        "session/credential operation (sign-in, sign-out, first-time setup, changing your own password with the current one): not a business operation; credentials never pass through chat"
       ]
     },
     {
@@ -390,17 +397,14 @@
       "handler": "me",
       "kind": "read",
       "action": "me",
-      "classification": "NOT_SUPPORTED_BY_AI",
-      "risk": "high",
+      "classification": "READ_ONLY",
+      "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
         "auth/AuthProvider.tsx",
         "features/auth/LoginPage.tsx",
         "features/auth/SetupPage.tsx",
         "features/invoices/InvoiceViewPage.tsx"
-      ],
-      "notes": [
-        "authentication/setup is never performed by the assistant"
       ]
     },
     {
@@ -430,15 +434,12 @@
       ],
       "kind": "update",
       "action": "preferences",
-      "classification": "NOT_SUPPORTED_BY_AI",
-      "risk": "high",
+      "classification": "REQUIRES_USER_CONFIRMATION",
+      "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx",
         "layout/AppShell.tsx"
-      ],
-      "notes": [
-        "authentication/setup is never performed by the assistant"
       ]
     },
     {
@@ -522,14 +523,15 @@
       ],
       "kind": "delete",
       "action": "deleteRule",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/budgets/BudgetControlPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -550,8 +552,7 @@
         },
         {
           "name": "name",
-          "type": "string",
-          "required": true
+          "type": "string"
         },
         {
           "name": "budget_id",
@@ -563,8 +564,7 @@
         },
         {
           "name": "account_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "account_code",
@@ -614,14 +614,15 @@
       ],
       "kind": "update",
       "action": "saveRule",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/budgets/BudgetControlPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -655,8 +656,7 @@
         },
         {
           "name": "name",
-          "type": "string",
-          "required": true
+          "type": "string"
         },
         {
           "name": "budget_id",
@@ -668,8 +668,7 @@
         },
         {
           "name": "account_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "account_code",
@@ -719,15 +718,16 @@
       ],
       "kind": "create",
       "action": "saveRule",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/budgets/BudgetControlPage.tsx",
         "features/budgets/BudgetViewPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -1170,8 +1170,7 @@
           "fields": [
             {
               "name": "account_id",
-              "type": "int64",
-              "required": true
+              "type": "int64"
             },
             {
               "name": "cost_center_id",
@@ -1275,8 +1274,7 @@
           "fields": [
             {
               "name": "account_id",
-              "type": "int64",
-              "required": true
+              "type": "int64"
             },
             {
               "name": "cost_center_id",
@@ -1658,8 +1656,7 @@
         },
         {
           "name": "replacement_check_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "reason",
@@ -2086,15 +2083,16 @@
       "body_type": "map[string]int64",
       "kind": "update",
       "action": "setMappings",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx",
         "features/settings/MappingsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -2109,15 +2107,16 @@
       ],
       "kind": "workflow",
       "action": "close",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "accounting_impact": "closing entries / period control",
       "ui_exists": true,
       "ui_entry_points": [
         "features/settings/FiscalYearsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -2132,15 +2131,16 @@
       ],
       "kind": "workflow",
       "action": "reopen",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "accounting_impact": "closing entries / period control",
       "ui_exists": true,
       "ui_entry_points": [
         "features/settings/FiscalYearsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -2209,15 +2209,16 @@
       ],
       "kind": "create",
       "action": "createYear",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "accounting_impact": "closing entries / period control",
       "ui_exists": true,
       "ui_entry_points": [
         "features/settings/FiscalYearsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -2229,15 +2230,16 @@
       "permission": "company.edit",
       "kind": "delete",
       "action": "deleteLogo",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceViewPage.tsx",
         "features/settings/CompanyPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -2265,18 +2267,26 @@
       "path": "/company/logo",
       "handler": "uploadLogo",
       "permission": "company.edit",
+      "body": [
+        {
+          "name": "upload_id",
+          "type": "file",
+          "required": true
+        }
+      ],
       "multipart": true,
       "kind": "update",
       "action": "uploadLogo",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx",
         "features/settings/CompanyPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -2292,15 +2302,16 @@
       "body_type": "?",
       "kind": "update",
       "action": "lockPeriod",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx",
         "features/settings/FiscalYearsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -2406,14 +2417,15 @@
       ],
       "kind": "update",
       "action": "update",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/settings/CompanyPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -3289,8 +3301,7 @@
         },
         {
           "name": "account_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "amount",
@@ -3398,8 +3409,7 @@
         },
         {
           "name": "account_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "amount",
@@ -3940,8 +3950,7 @@
       "body": [
         {
           "name": "date",
-          "type": "civil.Date",
-          "required": true
+          "type": "civil.Date"
         }
       ],
       "kind": "workflow",
@@ -4579,8 +4588,7 @@
         },
         {
           "name": "code",
-          "type": "string",
-          "required": true
+          "type": "string"
         },
         {
           "name": "name",
@@ -4739,8 +4747,7 @@
         },
         {
           "name": "code",
-          "type": "string",
-          "required": true
+          "type": "string"
         },
         {
           "name": "name",
@@ -4878,16 +4885,17 @@
       ],
       "kind": "delete",
       "action": "payroll_insurance_rules",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -4955,16 +4963,17 @@
       ],
       "kind": "update",
       "action": "saveInsuranceRule",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -5029,15 +5038,16 @@
       ],
       "kind": "create",
       "action": "saveInsuranceRule",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/payroll/PayrollSettingsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -5203,6 +5213,11 @@
         {
           "name": "commit",
           "type": "form"
+        },
+        {
+          "name": "upload_id",
+          "type": "file",
+          "required": true
         }
       ],
       "multipart": true,
@@ -5862,16 +5877,17 @@
       ],
       "kind": "update",
       "action": "putSettings",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -5886,16 +5902,17 @@
       ],
       "kind": "delete",
       "action": "payroll_tax_tables",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -5966,16 +5983,17 @@
       ],
       "kind": "update",
       "action": "saveTaxTable",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -6043,15 +6061,16 @@
       ],
       "kind": "create",
       "action": "saveTaxTable",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/payroll/PayrollSettingsPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -7572,15 +7591,16 @@
       ],
       "kind": "delete",
       "action": "deleteRole",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceViewPage.tsx",
         "features/settings/RolesPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -7631,15 +7651,16 @@
       ],
       "kind": "update",
       "action": "saveRole",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx",
         "features/settings/RolesPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -7705,14 +7726,15 @@
       ],
       "kind": "create",
       "action": "saveRole",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/settings/RolesPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -8398,15 +8420,16 @@
       ],
       "kind": "update",
       "action": "putSettings",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx",
         "features/settings/LetterheadPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning"
       ]
     },
     {
@@ -8425,7 +8448,7 @@
         "features/invoices/InvoiceViewPage.tsx"
       ],
       "notes": [
-        "authentication/setup is never performed by the assistant"
+        "session/credential operation (sign-in, sign-out, first-time setup, changing your own password with the current one): not a business operation; credentials never pass through chat"
       ]
     },
     {
@@ -8444,7 +8467,7 @@
         "features/auth/SetupPage.tsx"
       ],
       "notes": [
-        "authentication/setup is never performed by the assistant"
+        "session/credential operation (sign-in, sign-out, first-time setup, changing your own password with the current one): not a business operation; credentials never pass through chat"
       ]
     },
     {
@@ -8693,7 +8716,75 @@
       "ui_entry_points": [
         "features/checks/common.tsx",
         "features/invoices/InvoiceViewPage.tsx",
+        "features/treasury/AllocateDialog.tsx",
         "features/treasury/TransactionDialog.tsx"
+      ]
+    },
+    {
+      "id": "treasury.transactions.allocations.delete",
+      "module": "treasury",
+      "method": "DELETE",
+      "path": "/treasury/transactions/{id}/allocations",
+      "handler": "releaseTx",
+      "doc": "releaseTx removes the invoice allocations of a receipt or payment.",
+      "permission": "treasury.edit",
+      "path_params": [
+        "id"
+      ],
+      "kind": "delete",
+      "action": "releaseTx",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "high",
+      "accounting_impact": "posts a journal entry (cash/bank vs party or account); cancel = reversal entry",
+      "ui_exists": true,
+      "ui_entry_points": [
+        "features/treasury/TransactionsPage.tsx"
+      ],
+      "notes": [
+        "cancel/delete/reverse: always approved by a human, never automatic"
+      ]
+    },
+    {
+      "id": "treasury.transactions.allocations",
+      "module": "treasury",
+      "method": "POST",
+      "path": "/treasury/transactions/{id}/allocations",
+      "handler": "allocateTx",
+      "doc": "allocateTx settles open invoices with an existing receipt or payment.",
+      "permission": "treasury.edit",
+      "path_params": [
+        "id"
+      ],
+      "body_type": "AllocationsInput",
+      "body": [
+        {
+          "name": "allocations",
+          "type": "[]invoices.AllocationInput",
+          "required": true,
+          "fields": [
+            {
+              "name": "invoice_id",
+              "type": "int64"
+            },
+            {
+              "name": "amount",
+              "type": "decimal.Decimal"
+            }
+          ]
+        },
+        {
+          "name": "auto_allocate",
+          "type": "bool"
+        }
+      ],
+      "kind": "workflow",
+      "action": "allocations",
+      "classification": "REQUIRES_USER_CONFIRMATION",
+      "risk": "medium",
+      "accounting_impact": "posts a journal entry (cash/bank vs party or account); cancel = reversal entry",
+      "ui_exists": true,
+      "ui_entry_points": [
+        "features/treasury/AllocateDialog.tsx"
       ]
     },
     {
@@ -8897,15 +8988,17 @@
       ],
       "kind": "update",
       "action": "update",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx",
         "features/settings/UsersPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning",
+        "password fields only accept \"$generate\": a temporary password is generated and shown once to the user"
       ]
     },
     {
@@ -8959,14 +9052,16 @@
       ],
       "kind": "create",
       "action": "create",
-      "classification": "NOT_SAFE_TO_AUTOMATE",
-      "risk": "high",
+      "classification": "REQUIRES_APPROVAL",
+      "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
         "features/settings/UsersPage.tsx"
       ],
+      "critical": true,
       "notes": [
-        "security, configuration or period control: the assistant reads it but a human changes it in the app"
+        "security, configuration or period control: always approved by a human, shown with a critical warning",
+        "password fields only accept \"$generate\": a temporary password is generated and shown once to the user"
       ]
     }
   ],

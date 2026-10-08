@@ -11,6 +11,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/tafakorpardazan/tafakor-ai/internal/catalog"
 	"github.com/tafakorpardazan/tafakor-ai/internal/store"
 )
 
@@ -21,6 +22,35 @@ const (
 	Human   Mode = "human"
 	Blocked Mode = "blocked"
 )
+
+// ActionMode is the concrete way an operation will be carried out. It is derived
+// deterministically from the user's explicit instruction, the operation's risk and
+// the app's policy — never from model output.
+type ActionMode string
+
+const (
+	ActionDirect    ActionMode = "DIRECT"            // execute now, no confirmation (explicit instruction, no hard risk)
+	ActionReview    ActionMode = "REVIEW"            // structured summary the user confirms
+	ActionUIPreview ActionMode = "UI_PREVIEW"        // open the real form, pre-filled, do not submit
+	ActionConfirm   ActionMode = "CONFIRM"           // confirmation card
+	ActionApproval  ActionMode = "APPROVAL_REQUIRED" // approval is mandatory (never-auto / REQUIRES_APPROVAL)
+	ActionBlocked   ActionMode = "BLOCKED"           // refused (no permission)
+)
+
+// softChecks are the reasons an explicit "register directly" instruction is allowed
+// to override (they express the user's own switches, caps and confidence). Every
+// other failed check is hard and keeps the confirmation.
+var softChecks = map[string]bool{
+	"auto_switch_on":           true,
+	"not_asked_this_time":      true,
+	"action_allowed_automatic": true,
+	"not_duplicate":            true,
+	"confident_fields":         true,
+	"rule_trusted":             true,
+	"explicitly_requested":     true,
+	"within_amount_limit":      true,
+	"within_daily_cap":         true,
+}
 
 // NeverAuto actions always need a human, whatever the switch says.
 var NeverAuto = map[string]bool{
@@ -45,6 +75,14 @@ type Facts struct {
 	ForeignCurrency  bool // FX conversion needed
 	LearnedSuggest   bool // a learned rule is still in "suggest" stage
 	HasPermission    bool
+	Classification   string // the operation's catalog classification
+
+	// The user's own, unambiguous instruction about how to run this operation.
+	ExplicitDirect  bool // "register directly" / «مستقیم ثبت کن»
+	ExplicitPreview bool // "show me on screen" / «روی صفحه نشانم بده»
+	// Whether the operation can honour those instructions at all.
+	SupportsDirect  bool
+	SupportsPreview bool
 }
 
 type Check struct {
@@ -54,13 +92,15 @@ type Check struct {
 }
 
 type Decision struct {
-	Mode       Mode     `json:"mode"`
-	Reasons    []string `json:"reasons"` // codes of failed conditions, in order
-	Checks     []Check  `json:"checks"`
-	AutoSwitch bool     `json:"auto_switch"`
-	Simulated  bool     `json:"simulated"`  // simulation on: auto would have run but was not executed
-	WouldAuto  bool     `json:"would_auto"` // what auto mode would have done (for simulation)
-	Limits     Limits   `json:"limits"`
+	Action     ActionMode `json:"action"`
+	Mode       Mode       `json:"mode"`
+	Reasons    []string   `json:"reasons"`  // codes of failed conditions that still apply, in order
+	Warnings   []string   `json:"warnings"` // soft reasons the user's explicit instruction overrode
+	Checks     []Check    `json:"checks"`
+	AutoSwitch bool       `json:"auto_switch"`
+	Simulated  bool       `json:"simulated"`  // simulation on: auto would have run but was not executed
+	WouldAuto  bool       `json:"would_auto"` // what auto mode would have done (for simulation)
+	Limits     Limits     `json:"limits"`
 }
 
 type Limits struct {
@@ -89,13 +129,14 @@ func Decide(in Input) Decision {
 	}
 	if !f.HasPermission {
 		add("no_permission", false, "")
-		d.Mode = Blocked
+		d.Action, d.Mode = ActionBlocked, Blocked
 		return d
 	}
 	add("auto_switch_on", s.AutoMode, "")
 	add("company_allows_auto", !in.CompanyLock, "")
 	add("not_asked_this_time", !in.AskThisTime, "")
 	add("action_never_automatic", !NeverAuto[f.Action], f.Action)
+	add("action_requires_approval", f.Classification != catalog.NeedsApproval, f.Classification)
 	add("action_allowed_automatic", contains(s.AutoActions, f.Action), f.Action)
 	add("not_duplicate", !f.Duplicate, "")
 	add("no_conflict", !f.Conflict, "")
@@ -126,18 +167,56 @@ func Decide(in Input) Decision {
 			d.WouldAuto = false
 		}
 	}
+
+	// Split the failed checks into hard (never overridable) and soft (the user's own
+	// switches, caps and confidence). An explicit "register directly" instruction
+	// overrides the soft ones and records them as warnings.
+	var hard, soft []string
+	for _, r := range d.Reasons {
+		if softChecks[r] {
+			soft = append(soft, r)
+		} else {
+			hard = append(hard, r)
+		}
+	}
+	direct := f.ExplicitDirect && f.SupportsDirect && len(hard) == 0
+	if direct {
+		d.Reasons, d.Warnings = hard, soft
+	}
+
 	switch {
-	case len(d.Reasons) == 0 && s.Simulation:
-		d.Mode, d.Simulated = Human, true
+	case hasReason(hard, "no_permission"):
+		d.Action, d.Mode = ActionBlocked, Blocked
+	case f.ExplicitPreview && f.SupportsPreview:
+		d.Action, d.Mode = ActionUIPreview, Human
+	case direct:
+		d.Action, d.Mode = ActionDirect, Auto
+	case f.Classification == catalog.NeedsApproval || NeverAuto[f.Action]:
+		d.Action, d.Mode = ActionApproval, Human
 	case len(d.Reasons) == 0:
-		d.Mode = Auto
+		d.Action, d.Mode = ActionDirect, Auto
 	default:
-		d.Mode = Human
+		d.Action, d.Mode = ActionConfirm, Human
+	}
+
+	// Simulation never executes, even a direct instruction; the card states what
+	// would have happened.
+	if s.Simulation && d.Mode == Auto {
+		d.Mode, d.Simulated = Human, true
 	}
 	if s.Simulation && d.WouldAuto {
 		d.Simulated = true
 	}
 	return d
+}
+
+func hasReason(reasons []string, name string) bool {
+	for _, r := range reasons {
+		if r == name {
+			return true
+		}
+	}
+	return false
 }
 
 func contains(xs []string, x string) bool {
@@ -198,6 +277,7 @@ var ReasonText = map[string][2]string{
 	"company_allows_auto":        {"your company does not allow automatic registration", "ثبت خودکار در شرکت شما مجاز نیست"},
 	"not_asked_this_time":        {"you asked me to check with you this time", "خواستید این بار از شما بپرسم"},
 	"action_never_automatic":     {"this kind of action always needs your approval", "این نوع عملیات همیشه تایید شما را لازم دارد"},
+	"action_requires_approval":   {"this operation is always reviewed by a human before it is registered", "این عملیات همیشه پیش از ثبت نیاز به بازبینی انسانی دارد"},
 	"action_allowed_automatic":   {"this action type is not enabled for automatic registration", "این نوع عملیات برای ثبت خودکار فعال نیست"},
 	"not_duplicate":              {"possible duplicate", "احتمال ثبت تکراری"},
 	"no_conflict":                {"your instruction and the document don't match", "دستور شما با سند مطابقت ندارد"},

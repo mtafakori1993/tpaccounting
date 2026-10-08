@@ -100,7 +100,7 @@ type Proposal struct {
 	UsedRules []int64                     `json:"used_rules,omitempty"`
 	Suggested map[string]Choice           `json:"suggested"`
 	Stop      string                      `json:"stop,omitempty"`      // cannot proceed; plain-language reason
-	StopCode  string                      `json:"stop_code,omitempty"` // missing_record: a counterparty/record must be created first (planner takes over)
+	StopCode  string                      `json:"stop_code,omitempty"` // set: the fixed flow cannot finish this; the general planner takes over (missing_record, planner)
 	Subject   string                      `json:"subject,omitempty"`
 	PartyID   int64                       `json:"party_id,omitempty"`
 }
@@ -214,8 +214,8 @@ func (r *resolver) run(ctx context.Context) error {
 	case EvSalesInvoice:
 		r.p.Action = "create_invoice"
 	case EvTransfer:
-		r.p.Stop = r.c.tr("Transfers between your own accounts are not supported by the assistant yet. Please use Treasury → New transfer.",
-			"انتقال بین حساب‌های خودتان هنوز توسط دستیار پشتیبانی نمی‌شود. لطفاً از خزانه‌داری → انتقال جدید استفاده کنید.")
+		r.p.StopCode = "planner" // the general planner can do this (create the missing record, transfer, invoice…)
+		r.p.Stop = r.c.tr("Transfer between your own accounts.", "انتقال بین حساب‌های خودتان.")
 		return nil
 	default:
 		if v, ok := r.answer("event_type"); ok && validEvents[v] && v != EvOther {
@@ -563,8 +563,8 @@ func (r *resolver) party(field, name, role string, required bool) (*tools.Party,
 	default:
 		if required && len(opts) == 0 {
 			r.p.StopCode = "missing_record"
-			r.p.Stop = r.c.tr(fmt.Sprintf("I couldn't find %q among your parties. Please create it in Parties first (I don't create parties), then try again.", name),
-				fmt.Sprintf("«%s» را در طرف‌حساب‌ها پیدا نکردم. لطفاً ابتدا آن را در بخش طرف‌حساب‌ها تعریف کنید (من طرف حساب نمی‌سازم) و دوباره امتحان کنید.", name))
+			r.p.Stop = r.c.tr(fmt.Sprintf("%q is not among your parties yet; I'll create it as part of this work.", name),
+				fmt.Sprintf("«%s» هنوز در طرف‌حساب‌ها نیست؛ آن را در همین کار می‌سازم.", name))
 			return nil, errQuestion
 		}
 		text = r.c.tr(fmt.Sprintf("I couldn't find %q among your parties. Which party is it?", name), fmt.Sprintf("«%s» را در طرف‌حساب‌ها پیدا نکردم. کدام طرف حساب است؟", name))
@@ -699,6 +699,7 @@ func (r *resolver) treasury(ctx context.Context, field, kind string, cardHint st
 		return pick(active[0]), nil
 	}
 	if len(active) == 0 {
+		r.p.StopCode = "planner" // the general planner can do this (create the missing record, transfer, invoice…)
 		r.p.Stop = r.c.tr("You have no active "+kindName(kind, "en")+" account (or no permission to see it).", "هیچ حساب "+kindName(kind, "fa")+" فعالی ندارید (یا مجوز دیدن آن را ندارید).")
 		return nil, errQuestion
 	}
@@ -944,6 +945,7 @@ func (r *resolver) counterAccount(ctx context.Context, party *tools.Party) (*too
 		}
 	}
 	if len(cands) == 0 && rec == 0 {
+		r.p.StopCode = "planner" // the general planner can do this (create the missing record, transfer, invoice…)
 		r.p.Stop = r.c.tr("Your chart of accounts has no suitable account for this (e.g. \"Loans from shareholders\"). I won't guess: please create one in Chart of accounts, then ask me again and I'll remember it.",
 			"در سرفصل حساب‌ها حساب مناسبی برای این مورد (مثلاً «وام دریافتی از شرکا») وجود ندارد. حدس نمی‌زنم: لطفاً آن را در سرفصل حساب‌ها بسازید و دوباره از من بخواهید تا به خاطر بسپارم.")
 		return nil, errQuestion
@@ -977,6 +979,7 @@ func (r *resolver) expense(ctx context.Context) error {
 		}
 	}
 	if len(cats) == 0 {
+		r.p.StopCode = "planner" // the general planner can do this (create the missing record, transfer, invoice…)
 		r.p.Stop = r.c.tr("There are no expense categories you can use.", "دسته هزینه‌ای برای استفاده وجود ندارد.")
 		return nil
 	}
@@ -1188,6 +1191,7 @@ func (r *resolver) inventory(ctx context.Context) error {
 		base = "IRR"
 	}
 	if ev.ManufacturedInternally != nil && !*ev.ManufacturedInternally {
+		r.p.StopCode = "planner" // the general planner can do this (create the missing record, transfer, invoice…)
 		r.p.Stop = r.c.tr("Goods bought from a supplier are registered with a purchase invoice (it updates stock and the supplier's balance). Tell me the supplier and I'll prepare the purchase invoice.",
 			"کالایی که از تأمین‌کننده خریده شده با فاکتور خرید ثبت می‌شود (موجودی و حساب تأمین‌کننده را به‌روز می‌کند). نام تأمین‌کننده را بگویید تا فاکتور خرید را آماده کنم.")
 		return nil
@@ -1324,6 +1328,7 @@ func (r *resolver) inventory(ctx context.Context) error {
 	}
 	if wh == nil {
 		if len(actives) == 0 {
+			r.p.StopCode = "planner" // the general planner can do this (create the missing record, transfer, invoice…)
 			r.p.Stop = r.c.tr("There is no active warehouse (or you can't see it).", "هیچ انبار فعالی وجود ندارد (یا مجوز دیدن آن را ندارید).")
 			return nil
 		}

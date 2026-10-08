@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
 
+	"github.com/tafakorpardazan/tafakor-ai/internal/catalog"
 	"github.com/tafakorpardazan/tafakor-ai/internal/classify"
 	"github.com/tafakorpardazan/tafakor-ai/internal/store"
 	"github.com/tafakorpardazan/tafakor-ai/internal/tools"
@@ -24,14 +26,21 @@ type UIStep struct {
 	Page   string `json:"page,omitempty"`   // expected data-ai-page after navigate
 	Dialog string `json:"dialog,omitempty"` // dialog scope (data-ai-dialog)
 	Target string `json:"target,omitempty"` // tag value
-	Value  string `json:"value,omitempty"`
-	Search string `json:"search,omitempty"` // text typed into a ComboBox
-	Label  string `json:"label"`            // human-readable status, e.g. "Filling amount…"
+	// Alts are alternative tags for the same target or scope, tried in order by the
+	// widget. Used when the operation's variant is unknown: several controls can open
+	// the form, and each opens a differently-named dialog.
+	Alts  []string `json:"alts,omitempty"`
+	Value string   `json:"value,omitempty"`
+	Search  string   `json:"search,omitempty"` // text typed into a ComboBox
+	Label   string   `json:"label"`            // human-readable status, e.g. "Filling amount…"
 }
 
 type UIPlan struct {
 	TaskID string   `json:"task_id"`
 	Steps  []UIStep `json:"steps"`
+	// Mode is "preview" when the form must be filled but not submitted (the user
+	// reviews and submits it by hand). Empty means the normal auto-submit plan.
+	Mode string `json:"mode,omitempty"`
 }
 
 // UIResult is reported by the widget after running a plan.
@@ -40,9 +49,16 @@ type UIResult struct {
 	FailedStep  int    `json:"failed_step"`
 	Error       string `json:"error"`
 	FallbackAPI bool   `json:"fallback_api"` // user explicitly chose "register via API instead"
+	Preview     bool   `json:"preview"`      // the preview plan was filled; nothing was submitted
 }
 
 func uiPlanIfRunning(st *State) *UIPlan {
+	if st.Stage == StageUIPreview {
+		if plan, err := BuildPreviewPlan(st); err == nil {
+			return &plan
+		}
+		return nil
+	}
 	if st.Stage != StageUIRunning || st.Proposal == nil {
 		return nil
 	}
@@ -130,6 +146,139 @@ func BuildUIPlan(st *State) UIPlan {
 	return UIPlan{Steps: steps}
 }
 
+// BuildPreviewPlan produces the steps that open an operation's real form and fill
+// in everything that is known, stopping before submit. The user reviews the form and
+// submits it by hand; the assistant registers nothing.
+func BuildPreviewPlan(st *State) (UIPlan, error) {
+	L := func(en, fa string) string { return tr(st.Lang, en, fa) }
+	if st.Plan != nil {
+		return buildCatalogPreview(st, L)
+	}
+	plan := BuildUIPlan(st)
+	steps := make([]UIStep, 0, len(plan.Steps))
+	for _, s := range plan.Steps {
+		if s.Op == "submit" || s.Op == "wait_closed" {
+			continue
+		}
+		steps = append(steps, s)
+	}
+	if len(steps) == 0 {
+		return UIPlan{}, fmt.Errorf("no form to show")
+	}
+	return UIPlan{Steps: steps, Mode: "preview"}, nil
+}
+
+// buildCatalogPreview builds a preview plan for a multi-step operation: it opens the
+// first pending step's real form and fills the values it knows. Fields that depend on
+// the result of an earlier step (a "$s1.id" reference) cannot be filled yet and are
+// reported instead of guessed.
+func buildCatalogPreview(st *State, L func(string, string) string) (UIPlan, error) {
+	pending := st.Plan.Pending()
+	if len(pending) == 0 {
+		return UIPlan{}, fmt.Errorf("nothing is left to do")
+	}
+	s := pending[0]
+	op, ok := catalog.Load().Get(s.Tool)
+	if !ok {
+		return UIPlan{}, fmt.Errorf("unknown operation %s", s.Tool)
+	}
+	spec := op.Spec()
+	if !spec.SupportsUIPreview {
+		return UIPlan{}, fmt.Errorf("no form in the app can express %s", s.Tool)
+	}
+	var body map[string]json.RawMessage
+	if len(s.Args.Body) > 0 {
+		_ = json.Unmarshal(s.Args.Body, &body)
+	}
+	kindVal := ""
+	if raw, ok := body["kind"]; ok {
+		_ = json.Unmarshal(raw, &kindVal)
+	}
+	steps := []UIStep{{Op: "navigate", Value: spec.UIRoute, Label: L("Opening "+spec.UIRoute+"…", "باز کردن "+spec.UIRoute+"…")}}
+	// One click step: when the variant is known the server names exactly one control,
+	// otherwise the widget tries the candidates in order and uses the one that exists.
+	// Each control opens a dialog named after its own label, so the same candidate list
+	// also scopes the field steps that follow.
+	open := op.UIOpenFor(kindVal)
+	if len(open) == 0 {
+		return UIPlan{}, fmt.Errorf("no control opens the form for %s", s.Tool)
+	}
+	dlg := UIStep{Op: "click", Target: open[0], Label: L("Opening the form…", "باز کردن فرم…")}
+	if len(open) > 1 {
+		dlg.Alts = open
+	}
+	steps = append(steps, dlg)
+	types := map[string]catalog.Field{}
+	for _, f := range op.Body {
+		types[f.Name] = f
+	}
+	// iterate the operation's own field order so the plan is deterministic
+	for _, f := range op.InputFields() {
+		tag, ok := spec.UIFields[f.Name]
+		if !ok {
+			continue
+		}
+		raw, ok := body[f.Name]
+		if !ok {
+			continue
+		}
+		v := scalarValue(raw)
+		if v == "" {
+			continue
+		}
+		if refRe.MatchString(v) {
+			continue // depends on an earlier step's result; leave it to the user
+		}
+		st := previewStep(f.Name, types[f.Name], tag, v, L)
+		st.Dialog = open[0]
+		if len(open) > 1 {
+			st.Alts = open
+		}
+		steps = append(steps, st)
+	}
+	return UIPlan{Steps: steps, Mode: "preview"}, nil
+}
+
+// previewStep selects the widget step kind for a body field.
+func previewStep(name string, f catalog.Field, tag, value string, L func(string, string) string) UIStep {
+	label := L("Filling "+name+"…", "وارد کردن "+name+"…")
+	switch {
+	case f.Type == "date" || strings.HasSuffix(name, "_date"):
+		return UIStep{Op: "date", Target: tag, Value: value, Label: label}
+	case len(f.Enum) > 0 || f.Type == "bool":
+		op := "select"
+		if f.Type == "bool" {
+			op = "check"
+		}
+		return UIStep{Op: op, Target: tag, Value: value, Label: label}
+	default:
+		return UIStep{Op: "fill", Target: tag, Value: value, Label: label}
+	}
+}
+
+// scalarValue renders a JSON body value as the string a form control takes. Objects
+// and arrays (references to other documents) cannot be typed into a simple control.
+func scalarValue(raw json.RawMessage) string {
+	t := strings.TrimSpace(string(raw))
+	if t == "" || t == "null" {
+		return ""
+	}
+	var v any
+	if json.Unmarshal(raw, &v) != nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case string:
+		return x
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(x)
+	default:
+		return ""
+	}
+}
+
 func accountCode(p *classify.Proposal) string {
 	if p.Display.CounterAccount == "" {
 		return ""
@@ -174,8 +323,34 @@ func (a *Agent) uiResultIn(ctx context.Context, u *User, id string, req UIResult
 		e.Emit("error", map[string]any{"message": "task not found"})
 		return
 	}
-	if st.Stage != StageUIRunning && st.Stage != StageUIFailed {
+	if st.Stage != StageUIRunning && st.Stage != StageUIFailed && st.Stage != StageUIPreview {
 		e.Emit("error", map[string]any{"message": tr(st.Lang, "This task is not running on screen.", "این کار روی صفحه در حال اجرا نیست.")})
+		return
+	}
+	// Preview: the form was filled in and left for the user to review and submit.
+	// Nothing was registered, so there is nothing to verify.
+	if st.Stage == StageUIPreview {
+		a.audit(ctx, u, t.ID, "ui_preview_result", req)
+		if !req.OK {
+			st.Stage, st.Message = StageUIFailed, req.Error
+			a.save(ctx, t, st)
+			msg := tr(st.Lang, "I could not fill the form", "نتوانستم فرم را پر کنم")
+			if req.Error != "" {
+				msg += " (" + req.Error + ")"
+			}
+			e.Emit("ui_failed", map[string]any{"task_id": t.ID, "message": msg, "can_fallback": false})
+			e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
+			return
+		}
+		// The task stays open: nothing was registered, so the operation is not finished.
+		// The user can save the form by hand, or ask the assistant to register it instead
+		// (a follow-up continues this same operation and its exact payload).
+		st.Stage = StageUIPreview
+		a.save(ctx, t, st)
+		e.Emit("message", map[string]any{"text": tr(st.Lang,
+			"The form is open and filled in with these values — review it and save it when you are happy. I registered nothing; if you would rather I register it, just say so and I will.",
+			"فرم باز و با این مقادیر پر شد؛ بررسی کنید و هر وقت مطمئن شدید ذخیره کنید. من چیزی ثبت نکردم؛ اگر ترجیح می‌دهید خودم ثبت کنم فقط بگویید.")})
+		e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
 		return
 	}
 	if !st.Approved {

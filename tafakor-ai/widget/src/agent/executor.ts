@@ -13,6 +13,9 @@ export interface UIStep {
   page?: string;
   dialog?: string;
   target?: string;
+  // Alternative tags for the same target or scope, tried in order: several controls can
+  // open the same form, and each opens a differently-named dialog.
+  alts?: string[];
   value?: string;
   search?: string;
   label: string;
@@ -21,12 +24,16 @@ export interface UIStep {
 export interface UIPlan {
   task_id: string;
   steps: UIStep[];
+  // 'preview': fill the real form but never submit — the user reviews and saves it by hand.
+  mode?: 'preview';
 }
 
 export interface UIResult {
   ok: boolean;
   failed_step: number;
   error: string;
+  // The preview plan was filled in; nothing was submitted.
+  preview?: boolean;
 }
 
 // Secondary (accessibility) names for the tags used by plans, in both languages.
@@ -55,15 +62,17 @@ function norm(s: string) {
   return s.replace(/\s+/g, ' ').replace(/\*/g, '').trim();
 }
 
-function dialogScope(key?: string): ParentNode | null {
+function dialogScope(key?: string, alts?: string[]): ParentNode | null {
   // without a dialog, act inside the page content only (never the shell or menus)
   if (!key) return document.querySelector('main [data-ai-page], main[data-ai-page]') ?? document.querySelector('main') ?? document;
-  const tagged = document.querySelector(`[data-ai-dialog="${CSS.escape(key)}"]`);
-  if (tagged) return tagged;
-  const names = LABELS[key] ?? [];
-  for (const d of Array.from(document.querySelectorAll('[role="dialog"]'))) {
-    const title = d.querySelector('.dialog-title, h2')?.textContent ?? '';
-    if (names.some((n) => norm(title) === n)) return d;
+  for (const k of [key, ...(alts ?? [])]) {
+    const tagged = document.querySelector(`[data-ai-dialog="${CSS.escape(k)}"]`);
+    if (tagged) return tagged;
+    const names = LABELS[k] ?? [];
+    for (const d of Array.from(document.querySelectorAll('[role="dialog"]'))) {
+      const title = d.querySelector('.dialog-title, h2')?.textContent ?? '';
+      if (names.some((n) => norm(title) === n)) return d;
+    }
   }
   return null;
 }
@@ -92,21 +101,25 @@ function isVisible(el: Element) {
 }
 
 /** Visible tagged control; real buttons win over links (a link may reload the page). */
-function actionControl(scope: ParentNode, key: string): HTMLElement | null {
-  const tagged = Array.from(scope.querySelectorAll<HTMLElement>(`[data-ai-action="${CSS.escape(key)}"]`)).filter(isVisible);
-  const best = tagged.find((e) => e.tagName === 'BUTTON') ?? tagged[0];
-  if (best) return best;
-  const names = LABELS[key] ?? [];
-  return Array.from(scope.querySelectorAll<HTMLElement>('button, [role="button"]')).find((b) => isVisible(b) && names.includes(norm(b.textContent ?? ''))) ?? null;
+function actionControl(scope: ParentNode, keys: string[]): HTMLElement | null {
+  for (const key of keys) {
+    const tagged = Array.from(scope.querySelectorAll<HTMLElement>(`[data-ai-action="${CSS.escape(key)}"]`)).filter(isVisible);
+    const best = tagged.find((e) => e.tagName === 'BUTTON') ?? tagged[0];
+    if (best) return best;
+    const names = LABELS[key] ?? [];
+    const named = Array.from(scope.querySelectorAll<HTMLElement>('button, [role="button"]')).find((b) => isVisible(b) && names.includes(norm(b.textContent ?? '')));
+    if (named) return named;
+  }
+  return null;
 }
 
 async function resolve(step: UIStep, kind: 'field' | 'action' | 'tab'): Promise<HTMLElement | null> {
   const find = () => {
-    const scope = dialogScope(step.dialog);
+    const scope = dialogScope(step.dialog, step.alts);
     if (!scope) return null;
     if (kind === 'field') return fieldControl(scope, step.target!);
     if (kind === 'tab') return scope.querySelector<HTMLElement>(`[role="tab"][data-ai-tab="${CSS.escape(step.target!)}"], [role="tab"][data-key="${CSS.escape(step.target!)}"]`);
-    return actionControl(scope, step.target!);
+    return actionControl(scope, [step.target!, ...(step.alts ?? [])].filter(Boolean));
   };
   const el = await waitFor(find, 4000);
   if (el) return el;
@@ -115,16 +128,19 @@ async function resolve(step: UIStep, kind: 'field' | 'action' | 'tab'): Promise<
 }
 
 export async function runPlan(plan: UIPlan, cursor: Cursor, onStatus: (label: string) => void, aborted: () => boolean): Promise<UIResult> {
+  const preview = plan.mode === 'preview';
   cursor.show();
   try {
     for (let i = 0; i < plan.steps.length; i++) {
       if (aborted()) return { ok: false, failed_step: i, error: 'cancelled' };
       const s = plan.steps[i];
+      // Preview mode: fill the form and stop — the user reviews and submits it themselves.
+      if (preview && (s.op === 'submit' || s.op === 'wait_closed')) break;
       onStatus(s.label);
       const err = await runStep(s, cursor);
       if (err) return { ok: false, failed_step: i, error: err };
     }
-    return { ok: true, failed_step: -1, error: '' };
+    return { ok: true, failed_step: -1, error: '', preview };
   } catch (e: any) {
     return { ok: false, failed_step: -1, error: String(e?.message ?? e) };
   } finally {
@@ -149,7 +165,8 @@ async function runStep(s: UIStep, cursor: Cursor): Promise<string | null> {
       await cursor.to(el, s.label);
       await cursor.click();
       click(el);
-      const opened = await waitFor(() => dialogScope(s.target), 4000); // plans open the dialog named like the action
+      // plans open the dialog named like the action
+      const opened = await waitFor(() => [s.target!, ...(s.alts ?? [])].some((t) => dialogScope(t)), 4000);
       return opened ? null : `form ${s.target} did not open`;
     }
     case 'tab': {
@@ -210,10 +227,10 @@ async function runStep(s: UIStep, cursor: Cursor): Promise<string | null> {
       return null;
     }
     case 'wait_closed': {
-      const closed = await waitFor(() => !dialogScope(s.dialog), 10000);
+      const closed = await waitFor(() => ![s.target!, ...(s.alts ?? [])].some((t) => dialogScope(t)), 10000);
       if (closed) return null;
       // The form stayed open: report the app's own validation message.
-      const scope = dialogScope(s.dialog) as Element | null;
+      const scope = dialogScope(s.dialog, s.alts) as Element | null;
       const msg = scope?.querySelector('.field-error, .alert, [role="alert"]')?.textContent?.trim();
       return msg ? `the form reported: ${msg}` : 'the form did not close after saving';
     }

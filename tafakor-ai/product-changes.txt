@@ -1,0 +1,10 @@
+# Product features added to the accounting application itself (not part of the AI add-on).
+# They stay when the add-on is removed; verify-removal.sh excludes exactly these paths from its
+# "identical to main" check. See CHANGES_TO_CORE.md, "Product features".
+backend/internal/treasury/service.go
+backend/internal/treasury/handler.go
+backend/internal/integration/workflow_test.go
+frontend/src/features/treasury/AllocateDialog.tsx
+frontend/src/features/treasury/TransactionsPage.tsx
+frontend/src/i18n/fa.ts
+frontend/src/i18n/en.ts
