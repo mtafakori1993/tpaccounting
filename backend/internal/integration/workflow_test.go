@@ -400,3 +400,52 @@ func TestLetterheadSettingsAndPDF(t *testing.T) {
 		t.Fatalf("expected a PDF, got %d %s", res.StatusCode, res.Header.Get("Content-Type"))
 	}
 }
+
+// An existing receipt (registered without allocations) can settle invoices later,
+// and allocations can be released again without cancelling the receipt.
+func TestAllocateExistingReceiptToInvoices(t *testing.T) {
+	srv := newApp(t)
+	c := setupCompany(t, srv)
+	cust := c.must("POST", "/parties", map[string]any{"name": "C", "is_customer": true})
+	other := c.must("POST", "/parties", map[string]any{"name": "D", "is_customer": true})
+	cash := c.must("POST", "/treasury/accounts", map[string]any{"kind": "cash", "name": "Cash"})
+	inv := func(party map[string]any, amount string) map[string]any {
+		return c.must("POST", "/sales/invoices", map[string]any{"date": today, "party_id": id(party), "post": true,
+			"items": []any{map[string]any{"description": "Consulting", "quantity": "1", "unit_price": amount}}})
+	}
+	a, b, foreign := inv(cust, "300"), inv(cust, "500"), inv(other, "100")
+	rc := c.must("POST", "/treasury/transactions", map[string]any{"kind": "receipt", "date": today, "treasury_account_id": id(cash),
+		"party_id": id(cust), "amount": "600"})
+	balance := str(c.must("GET", "/parties/"+str(cust, "id"), nil), "balance")
+	path := "/treasury/transactions/" + str(rc, "id") + "/allocations"
+
+	// explicit allocation to one invoice; another party's invoice and over-allocation are rejected
+	c.expect(http.StatusUnprocessableEntity, "validation", "POST", path, map[string]any{"allocations": []any{map[string]any{"invoice_id": id(foreign), "amount": "50"}}})
+	c.expect(http.StatusUnprocessableEntity, "validation", "POST", path, map[string]any{"allocations": []any{map[string]any{"invoice_id": id(b), "amount": "501"}}})
+	c.expect(http.StatusUnprocessableEntity, "validation", "POST", path, map[string]any{})
+	c.must("POST", path, map[string]any{"allocations": []any{map[string]any{"invoice_id": id(b), "amount": "500"}}})
+	if got := str(c.must("GET", "/sales/invoices/"+str(b, "id"), nil), "paid_amount"); got != "500" {
+		t.Fatalf("explicit allocation: %s", got)
+	}
+	// the rest (100) goes oldest first; nothing more can be allocated afterwards
+	c.must("POST", path, map[string]any{"auto_allocate": true})
+	if got := str(c.must("GET", "/sales/invoices/"+str(a, "id"), nil), "paid_amount"); got != "100" {
+		t.Fatalf("auto allocation of the remainder: %s", got)
+	}
+	c.expect(http.StatusUnprocessableEntity, "fully_allocated", "POST", path, map[string]any{"auto_allocate": true})
+	if got := str(c.must("GET", "/parties/"+str(cust, "id"), nil), "balance"); got != balance {
+		t.Fatalf("allocating must not change the ledger: %s → %s", balance, got)
+	}
+	// releasing reopens the invoices so the paid one can be cancelled, receipt stays posted
+	c.must("DELETE", path, nil)
+	if got := str(c.must("GET", "/sales/invoices/"+str(b, "id"), nil), "paid_amount"); got != "0" {
+		t.Fatalf("release: %s", got)
+	}
+	c.must("POST", "/sales/invoices/"+str(b, "id")+"/cancel", map[string]any{})
+	if st := str(c.must("GET", "/treasury/transactions/"+str(rc, "id"), nil), "status"); st != "posted" {
+		t.Fatalf("receipt must stay posted: %s", st)
+	}
+	// transfers and cancelled transactions cannot be allocated
+	c.must("POST", "/treasury/transactions/"+str(rc, "id")+"/cancel", map[string]any{})
+	c.expect(http.StatusUnprocessableEntity, "already_cancelled", "POST", path, map[string]any{"auto_allocate": true})
+}

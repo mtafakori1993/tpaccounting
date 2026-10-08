@@ -479,3 +479,64 @@ func CancelTx(ctx context.Context, q db.DBTX, companyID, userID, id int64) error
 	_, err := q.Exec(ctx, `UPDATE treasury_transactions SET status = 'cancelled', cancelled_at = now() WHERE id = $1`, id)
 	return err
 }
+
+// AllocationsInput settles open invoices with an already registered receipt or payment.
+type AllocationsInput struct {
+	Allocations  []invoices.AllocationInput `json:"allocations"`
+	AutoAllocate bool                       `json:"auto_allocate"`
+}
+
+// AllocateTx allocates the still unallocated part of a posted receipt or payment
+// to the counterparty's open documents (explicitly, or oldest first). The ledger
+// is not touched: the transaction already settled the party's account; this
+// only records which invoices it paid.
+func AllocateTx(ctx context.Context, q db.DBTX, companyID, id int64, in AllocationsInput) error {
+	kind, partyID, amount, err := lockAllocatable(ctx, q, companyID, id)
+	if err != nil {
+		return err
+	}
+	if len(in.Allocations) == 0 && !in.AutoAllocate {
+		v := apperr.NewValidator()
+		v.Check(false, "allocations", "required")
+		return v.Err()
+	}
+	var allocated decimal.Decimal
+	if err := q.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0) FROM payment_allocations WHERE transaction_id = $1`, id).Scan(&allocated); err != nil {
+		return err
+	}
+	remaining := amount.Sub(allocated)
+	if !remaining.IsPositive() {
+		return apperr.Rule("fully_allocated", "the whole amount of this transaction is already allocated")
+	}
+	return invoices.AllocatePayment(ctx, q, companyID, partyID, id, kind, remaining, in.Allocations, in.AutoAllocate)
+}
+
+// ReleaseTxAllocations removes a posted transaction's invoice allocations. The
+// money stays on the counterparty's account (as an advance) and can be
+// allocated again; the invoices become open again.
+func ReleaseTxAllocations(ctx context.Context, q db.DBTX, companyID, id int64) error {
+	if _, _, _, err := lockAllocatable(ctx, q, companyID, id); err != nil {
+		return err
+	}
+	return invoices.ReleasePayment(ctx, q, id)
+}
+
+func lockAllocatable(ctx context.Context, q db.DBTX, companyID, id int64) (string, int64, decimal.Decimal, error) {
+	var kind, status string
+	var partyID, counter *int64
+	var amount decimal.Decimal
+	if err := q.QueryRow(ctx, `SELECT kind, status, party_id, counter_account_id, amount FROM treasury_transactions
+		WHERE company_id = $1 AND id = $2 FOR UPDATE`, companyID, id).Scan(&kind, &status, &partyID, &counter, &amount); err != nil {
+		if db.IsNoRows(err) {
+			return "", 0, amount, apperr.NotFound("treasury_transaction")
+		}
+		return "", 0, amount, err
+	}
+	if status == "cancelled" {
+		return "", 0, amount, apperr.Rule("already_cancelled", "the transaction is cancelled")
+	}
+	if kind == "transfer" || partyID == nil || counter != nil {
+		return "", 0, amount, apperr.Rule("not_allocatable", "only receipts and payments of a counterparty can settle invoices")
+	}
+	return kind, *partyID, amount, nil
+}

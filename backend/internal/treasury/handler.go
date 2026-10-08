@@ -27,6 +27,8 @@ func (h *Handler) Routes(r chi.Router) {
 	r.With(identity.Require("treasury.view")).Get("/transactions/{id}", httpx.Handler(h.getTx))
 	r.With(identity.Require("treasury.create"), identity.Require("treasury.post")).Post("/transactions", httpx.Handler(h.createTx))
 	r.With(identity.Require("treasury.cancel")).Post("/transactions/{id}/cancel", httpx.Handler(h.cancelTx))
+	r.With(identity.Require("treasury.edit")).Post("/transactions/{id}/allocations", httpx.Handler(h.allocateTx))
+	r.With(identity.Require("treasury.edit")).Delete("/transactions/{id}/allocations", httpx.Handler(h.releaseTx))
 	r.With(identity.Require("treasury.view")).Get("/open-items", httpx.Handler(h.openItems))
 }
 
@@ -195,4 +197,54 @@ func (h *Handler) openItems(w http.ResponseWriter, r *http.Request) error {
 	}
 	httpx.OK(w, items)
 	return nil
+}
+
+// allocateTx settles open invoices with an existing receipt or payment.
+func (h *Handler) allocateTx(w http.ResponseWriter, r *http.Request) error {
+	p := identity.From(r.Context())
+	id, err := httpx.IDParam(r, "id")
+	if err != nil {
+		return err
+	}
+	var in AllocationsInput
+	if err := httpx.Decode(r, &in); err != nil {
+		return err
+	}
+	err = db.WithTx(r.Context(), h.Pool, func(tx pgx.Tx) error {
+		before, err := GetTx(r.Context(), tx, p.CompanyID, id)
+		if err != nil {
+			return err
+		}
+		if err := AllocateTx(r.Context(), tx, p.CompanyID, id, in); err != nil {
+			return err
+		}
+		return audit.Record(r.Context(), tx, "allocate", "treasury_transaction", id, before.Allocations, in)
+	})
+	if err != nil {
+		return err
+	}
+	return h.getTx(w, r)
+}
+
+// releaseTx removes the invoice allocations of a receipt or payment.
+func (h *Handler) releaseTx(w http.ResponseWriter, r *http.Request) error {
+	p := identity.From(r.Context())
+	id, err := httpx.IDParam(r, "id")
+	if err != nil {
+		return err
+	}
+	err = db.WithTx(r.Context(), h.Pool, func(tx pgx.Tx) error {
+		before, err := GetTx(r.Context(), tx, p.CompanyID, id)
+		if err != nil {
+			return err
+		}
+		if err := ReleaseTxAllocations(r.Context(), tx, p.CompanyID, id); err != nil {
+			return err
+		}
+		return audit.Record(r.Context(), tx, "release_allocations", "treasury_transaction", id, before.Allocations, nil)
+	})
+	if err != nil {
+		return err
+	}
+	return h.getTx(w, r)
 }

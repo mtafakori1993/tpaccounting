@@ -22,7 +22,9 @@ import { useSubmit } from '@/lib/useSubmit';
 import { usePdf } from '@/lib/pdf';
 import { treasuryDocument } from '@/lib/documents';
 import { routeFor } from '@/features/invoices/docs';
+import { toBig } from '@/lib/decimal';
 import { TransactionDialog, type TxDefaults, type TxKind } from './TransactionDialog';
+import { AllocateDialog } from './AllocateDialog';
 
 export function TransactionsPage() {
   const { t } = useI18n();
@@ -127,6 +129,8 @@ function TxView({ id, onClose, onChanged }: { id: number; onClose: () => void; o
   const err = useErrorMessage();
   const { can } = useAuth();
   const [confirm, setConfirm] = useState(false);
+  const [allocating, setAllocating] = useState(false);
+  const [releasing, setReleasing] = useState(false);
   const action = useSubmit();
   const printer = usePdf();
   const q = useQuery({ queryKey: ['treasury-tx-view', id], queryFn: () => api.get<TreasuryTx>(`/treasury/transactions/${id}`) });
@@ -137,6 +141,8 @@ function TxView({ id, onClose, onChanged }: { id: number; onClose: () => void; o
         <Button pending={printer.pending} onClick={() => printer.view(() => treasuryDocument(x, t, tryT, f))}>{t('common.exportPdf')}</Button>
         <Button pending={printer.pending} onClick={() => printer.print(() => treasuryDocument(x, t, tryT, f))}>{t('common.printDoc')}</Button>
         {x.journal_entry_id && <Link className="btn btn-secondary" to={`/journal/${x.journal_entry_id}`}>{t('invoices.journalEntry')}</Link>}
+        {allocatable(x) && can('treasury.edit') && toBig(x.allocated || '0').lt(x.amount) && <Button onClick={() => setAllocating(true)}>{t('treasury.allocateExisting')}</Button>}
+        {allocatable(x) && can('treasury.edit') && !!x.allocations?.length && <Button onClick={() => setReleasing(true)}>{t('treasury.releaseAllocations')}</Button>}
         {x.status === 'posted' && can('treasury.cancel') && <Button variant="negative" onClick={() => setConfirm(true)}>{t('common.cancel')}</Button>}
         <Button onClick={onClose}>{t('common.close')}</Button>
       </>}>
@@ -163,6 +169,18 @@ function TxView({ id, onClose, onChanged }: { id: number; onClose: () => void; o
           <Attachments entity="treasury_transaction" id={x.id} canEdit={can('treasury.edit')} />
         </div>
       )}
+      {allocating && x && <AllocateDialog tx={x} onClose={() => setAllocating(false)} onSaved={() => { setAllocating(false); void q.refetch(); onChanged(); }} />}
+      {releasing && x && (
+        <ConfirmDialog title={t('treasury.releaseAllocations')} body={t('treasury.releaseHelp')} confirmLabel={t('common.confirm')}
+          pending={action.pending} error={action.error} onClose={() => setReleasing(false)}
+          onConfirm={async () => {
+            if (await action.run(() => api.del(`/treasury/transactions/${x.id}/allocations`).then(() => true), t('common.saved'))) {
+              setReleasing(false);
+              void q.refetch();
+              onChanged();
+            }
+          }} />
+      )}
       {confirm && x && (
         <ConfirmDialog title={t('treasury.cancelTitle')} body={t('treasury.cancelHelp')} confirmLabel={t('common.confirm')} negative
           pending={action.pending} error={action.error} onClose={() => setConfirm(false)}
@@ -176,4 +194,9 @@ function TxView({ id, onClose, onChanged }: { id: number; onClose: () => void; o
       )}
     </Dialog>
   );
+}
+
+/** Posted receipts/payments of a counterparty can settle invoices after registration. */
+function allocatable(x: TreasuryTx) {
+  return x.status === 'posted' && x.kind !== 'transfer' && !!x.party_id && !x.counter_account_id;
 }
