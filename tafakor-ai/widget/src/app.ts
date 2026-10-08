@@ -534,7 +534,7 @@ class Widget {
     for (const n of p.notes ?? []) card.append(h('div', { class: 'hint' }, n));
     for (const m of p.duplicates ?? []) card.append(h('div', { class: 'reason warn' }, `${t('duplicateFound')} #${num(m.candidate.Number ?? m.candidate.number ?? '')} (${m.candidate.Date ?? ''}, ${num(String(m.candidate.Amount ?? ''))})`));
     if (p.decision?.simulated) card.append(h('div', { class: 'reason ok' }, t('simulated')));
-    (card as any)._preview = p;
+    this.lastPreview = p;
     return card;
   }
 
@@ -567,19 +567,43 @@ class Widget {
     const fields: [string, string, string][] = [['amount', t('amount'), 'decimal'], ['date', t('date') + ' (YYYY-MM-DD)', 'text'],
       ['reference', t('reference'), 'text'], ['description', t('description'), 'text']];
     const inputs: Record<string, HTMLInputElement> = {};
-    const form = h('div', { class: 'form' }, ...fields.map(([k, label, mode]) => {
+    const selects: Record<string, HTMLSelectElement> = {};
+    const form = h('div', { class: 'form' });
+    const action = this.lastPreview?.action ?? '';
+    // id choices come from the app's own API, read as the signed-in user
+    const addSelect = async (key: string, label: string, path: string, map: (x: any) => [number, string] | null) => {
+      try {
+        const res = await fetch('/api/v1' + path, { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const items: any[] = Array.isArray(data) ? data : data.items ?? [];
+        const sel = h('select', {}, h('option', { value: '' }, '—'), ...items.map(map).filter(Boolean).map((p) => h('option', { value: String(p![0]) }, p![1]))) as HTMLSelectElement;
+        selects[key] = sel;
+        form.prepend(h('label', {}, label, sel));
+      } catch {
+        /* list unavailable: the field simply isn't offered */
+      }
+    };
+    if (action === 'create_expense') void addSelect('category_id', t('category'), '/expenses/categories', (c) => (c.is_active ? [c.id, c.name] : null));
+    if (action === 'create_expense' || action === 'create_receipt' || action === 'create_payment') {
+      void addSelect('treasury_account_id', t('account'), '/treasury/accounts', (a) => (a.is_active ? [a.id, a.name] : null));
+      void addSelect('cost_center_id', t('project'), '/cost-centers?page_size=200', (c) => (c.is_active ? [c.id, c.name] : null));
+    }
+    form.append(...fields.map(([k, label, mode]) => {
       inputs[k] = h('input', { type: 'text', inputmode: mode, dir: k === 'description' ? 'auto' : 'ltr' }) as HTMLInputElement;
       return h('label', {}, label, inputs[k]);
     }));
-    // id-based corrections are offered as choices inside questions; free edits here
     form.append(h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: async () => {
-      const body: Record<string, string> = {};
+      const body: Record<string, string | number> = {};
       for (const [k, el] of Object.entries(inputs)) if (el.value.trim()) body[k] = el.value.trim();
+      for (const [k, el] of Object.entries(selects)) if (el.value) body[k] = Number(el.value);
       if (!Object.keys(body).length) return;
       await this.run(`/tasks/${taskId}/edit`, body);
     } }, t('saveChanges'))));
     return form;
   }
+
+  lastPreview: any = null;
 
   resultCard(d: any) {
     const r = d.result ?? {};

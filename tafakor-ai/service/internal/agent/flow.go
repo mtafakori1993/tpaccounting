@@ -211,6 +211,16 @@ func (a *Agent) Edit(ctx context.Context, u *User, id string, req EditRequest, e
 	}
 	offer("category", learning.ExpenseCategory, subject, req.CategoryID, "")
 	offer("counter_account", learning.EventAccount, eventKey(old), req.CounterAccountID, "")
+	if req.TreasuryAccountID != nil {
+		field, kind := "dest_account", ""
+		if old.Action == "create_payment" {
+			field = "source_account"
+		}
+		if old.Expense != nil {
+			field, kind = "source_account", old.Expense.PaymentMethod
+		}
+		offer(field, learning.PaymentDefault, field+":"+kind, req.TreasuryAccountID, "")
+	}
 	a.save(ctx, t, st)
 	a.register(ctx, u, t, st, nil, e)
 	if len(st.Offers) > 0 {
