@@ -227,10 +227,11 @@ async function runStep(s: UIStep, cursor: Cursor): Promise<string | null> {
       return null;
     }
     case 'wait_closed': {
-      const closed = await waitFor(() => ![s.target!, ...(s.alts ?? [])].some((t) => dialogScope(t)), 10000);
+      const keys = [s.dialog, ...(s.alts ?? [])].filter(Boolean) as string[];
+      const closed = await waitFor(() => !keys.some((k) => dialogScope(k)), 10000);
       if (closed) return null;
       // The form stayed open: report the app's own validation message.
-      const scope = dialogScope(s.dialog, s.alts) as Element | null;
+      const scope = dialogScope(keys[0], keys.slice(1)) as Element | null;
       const msg = scope?.querySelector('.field-error, .alert, [role="alert"]')?.textContent?.trim();
       return msg ? `the form reported: ${msg}` : 'the form did not close after saving';
     }

@@ -117,3 +117,13 @@ Branch: `feature/tafakor-ai` (never pushed, never merged by the agent).
 - First live run on flash-lite: 7/14 — 6 failures were OpenRouter "rate-limited upstream" for flash-lite (now: fallback model),
   2 were lookups placed in plans as approval steps (now: run as reads). Stock question re-run after the fix: PASS (60, matches the app).
 - Full re-run not possible: OpenRouter account credit ≈ $0.03.
+
+### Follow-up — full capability parity: DONE (live model re-run blocked by credit)
+- 225 operations; 220 executable through the assistant with the user's permissions (99 read, 41 confirmation,
+  80 approval of which 26 critical); 5 session/credential operations excluded by design.
+- New product operation: settle invoices with an existing receipt/payment + release (backend, UI, integration test);
+  verified in the browser on the demo company (release → settle dialog → saved).
+- Generated passwords ($generate), upload operations, planner hand-over for fixed-flow dead ends, parity tests.
+- All suites green: core backend incl. PostgreSQL integration, frontend 57, AI service, widget; removal verified.
+- `test/employee_scenarios.py` extended with the parity examples (bank account + opening balance, transfer, settle
+  existing receipt, user management); not run — OpenRouter account has ≈ $0.03.

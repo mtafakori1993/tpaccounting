@@ -153,3 +153,29 @@ only the changes with real ids; (b) the free shared capacity of flash-lite is so
 amount guard D31, approval binding) are model-independent, so a weaker model can fail to finish a task but cannot register a
 wrong amount or an unapproved change. Expect lower task completion than with Claude on complex multi-step requests; set
 `OPENROUTER_MODEL` back to a stronger model if that matters more than cost.
+
+D34. **Capability parity.** The assistant is a second interface to the application: every operation the signed-in user
+can perform in the app is executable through it, limited only by the user's permissions, approval/confirmation and the
+app's own accounting rules. Former `NOT_SAFE_TO_AUTOMATE` operations (users, roles, settings, company, fiscal years and
+periods, payroll rules, budget control rules, account mappings) are now `REQUIRES_APPROVAL` with a **critical** flag
+(strong warning on the card, never automatic). Only sign-in, sign-out, first-time setup and changing one's own password
+remain excluded: they are session/credential operations, not business operations. A catalog test enforces the invariant
+(every non-session operation is executable and offered to the planner). Fixed-flow dead ends ("transfers are not
+supported", "create the account first", "no warehouse") now hand over to the planner, which creates what is missing.
+
+D35. **Passwords never pass through the model.** Password fields accept only `"$generate"`. The approval binds that
+placeholder; the operation runner generates a 16-character password at execution, sends it to the app and returns it
+in a result type that marshals without it. The widget shows it once in a "temporary password" card; it is not stored in
+the task, the plan, the transcript or the audit log and never reaches the model (tested).
+
+D36. **Missing product operations are added to the product.** Settling invoices with an existing receipt/payment did
+not exist in the app (Phase-12 finding A). It was implemented in the application (backend service + route + UI + Postgres
+integration test) on top of the existing allocation service, then exposed automatically through the generated catalog.
+It is recorded as a product feature, not as part of the add-on, and survives removal of the add-on.
+
+D37. **Upload operations** (attachments, company logo, attendance import) take `upload_id` = a file the user attached
+in the assistant; the runner reads it from the user's own file store and sends it as multipart. capmap adds the field.
+
+D38. **capmap "required" markers are scoped to the validated input type** (the function's typed parameter and the
+types nested in it). Package-wide collection had marked e.g. `allocations` as required for creating a receipt because
+a different function validates it for the new allocation operation; it also removed earlier false positives.

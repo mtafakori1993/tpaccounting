@@ -108,7 +108,7 @@ from Bank Mellat), validated against the catalog and the user's permissions, app
 executed in order with read-back checks and before/after audit, resumable after a failure (D30).
 
 **Phase 12 findings.**
-- A. *Allocating an existing receipt to an invoice is not possible.* Allocations can only be given when a receipt/payment is
+- A. *(Fixed — now a product feature, D36.)* *Allocating an existing receipt to an invoice was not possible.* Allocations can only be given when a receipt/payment is
   created (`allocations` / `auto_allocate`); there is no endpoint to match an already-registered deposit to an invoice later.
   The assistant says so honestly instead of faking it (e.g. by cancelling and re-entering the receipt).
 - B. *Permission checks inside handlers.* Cheque state transitions and some document actions check permissions inside the
@@ -126,6 +126,15 @@ executed in order with read-back checks and before/after audit, resumable after 
 listed requests before the guard was added. **The re-run of the complex workflow after the fix failed with HTTP 402: the
 OpenRouter account has only ~$0.17 credit left** (the key's own $5 limit still shows ~$1.56, but the account is the binding
 limit). Add credit, then run `python3 test/employee_scenarios.py http://127.0.0.1:18085`.
+
+## Follow-up: full capability parity
+
+The assistant can now do everything the signed-in user can do in the application (D34): 220 of 225 operations, with
+the user's own permissions; security and configuration changes always need approval and are flagged critical; only
+sign-in/sign-out/setup/own-password are excluded. A missing business operation (settling invoices with an existing
+receipt/payment) was added to the product itself, with UI and tests (D36, CHANGES_TO_CORE). New users get a generated
+temporary password shown once (D35). Not verified with the live model: no OpenRouter credit left. Run
+`python3 test/employee_scenarios.py http://127.0.0.1:18085` after adding credit.
 
 ## How to run it
 See README → Setup. For the throwaway test stack used tonight (still running, demo data only):

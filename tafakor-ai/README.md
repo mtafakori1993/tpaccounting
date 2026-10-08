@@ -104,6 +104,9 @@ The assistant's tools are generated from the app's source (`service/cmd/capmap`,
 changing the app: `cd service && go run ./cmd/capmap -repo ../.. -out internal/catalog/capabilities.json -md ../CAPABILITIES.md`.
 Multi-step requests are planned against this catalog, approved as one card, executed with the user's own permissions and
 audited with before/after values. Money amounts in a plan must come from the user's words, the document or the app (D31).
+Parity (D34): every operation the user can perform in the app is available through the assistant with the user's own
+permissions; security/configuration operations always need approval (critical warning); passwords are generated, never
+written by the model (D35). Product features added to the app itself are listed in `product-changes.txt`.
 
 ## Approval switch and guardrails
 - One visible switch per user: **Ask me before registering** (default) / **Register automatically**. Turning it on asks

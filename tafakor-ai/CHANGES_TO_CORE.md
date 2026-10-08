@@ -1,7 +1,8 @@
 # Changes to the core application
 
-No accounting domain code, accounting migrations, accounting tables or accounting endpoints were changed.
-The AI service uses only the existing public `/api/v1` API, called as the signed-in user.
+The AI service uses only the application's public `/api/v1` API, called as the signed-in user.
+No migrations or tables were changed. One **product feature** was added to the application itself (see the end of
+this file): the parity requirement says a missing business operation is added to the software, not refused by the AI.
 
 Everything below is removed by `tafakor-ai/remove-touchpoints.sh` (add `--tags` to remove the tagging edits too);
 `tafakor-ai/verify-removal.sh` proves the tree is then identical to `main` and that the app builds and its tests pass.
@@ -42,3 +43,12 @@ that produced its text (e.g. `common.amount`), never the visible fa/en text. The
 
 Frontend tests (`npm test`, 57) and type checks pass with the tags; the backend test suite including the PostgreSQL
 integration tests passes.
+
+## Product features (part of the application; kept when the add-on is removed)
+
+Listed in `tafakor-ai/product-changes.txt`; `verify-removal.sh` excludes exactly these paths from its "identical to
+`main`" check and still builds and tests the app.
+
+| Feature | Files | Notes |
+|---|---|---|
+| Settle invoices with an **existing** receipt/payment, and release the allocations | `backend/internal/treasury/service.go` (`AllocateTx`, `ReleaseTxAllocations`), `handler.go` (`POST`/`DELETE /treasury/transactions/{id}/allocations`, permission `treasury.edit`, audited with before/after), `frontend/src/features/treasury/AllocateDialog.tsx`, `TransactionsPage.tsx`, `i18n/fa.ts`, `i18n/en.ts`, `backend/internal/integration/workflow_test.go` | Reuses the existing allocation service (`invoices.AllocatePayment` / `ReleasePayment`): no new accounting logic, the ledger is not touched. Previously allocations could only be given when the receipt was created; a deposit registered first could never be matched to its invoice later, and a paid invoice could only be cancelled by cancelling its receipt. |
