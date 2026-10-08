@@ -100,3 +100,18 @@ new infrastructure and many providers (and self-hosted Whisper servers) expose i
 
 D25. **Model output is parsed as JSON objects with validation**, not tool-calling: the model never sees or names write
 tools; the orchestrator maps validated events onto allowlisted tools.
+
+D26. **Conversation state (fix for "the assistant forgets").** Root cause: every typed message started a new task with
+no history; only question *cards* were stateful; free-form questions were never stored; "none" was indistinguishable
+from "not answered"; saves were last-writer-wins. Now: a persisted, versioned conversation (transcript, tool calls and
+results, active operation) under optimistic locking plus a per-conversation lock; a structured frame per operation with
+slot statuses known / null / inferred / unknown; follow-up messages are interpreted in *update mode* (state + history in
+the prompt) and MERGED deterministically in Go (the operation type never changes unless the user explicitly switches;
+explicit "no code" answers are also detected deterministically); only genuinely missing fields are asked, in one
+question. Alternative: send the whole transcript to the model each turn and trust it. Rejected: the model may still
+re-ask or reinterpret; the merge must not depend on it.
+
+D27. **Inventory receipt from production** is a new operation on the app's existing APIs: create the product if it
+does not exist (`POST /products`, code empty = numbered by the app) and a posted stock receipt (`POST /inventory/documents`,
+Dr inventory / Cr the posting rule "inventory adjustment"). Default warehouse and value-per-unit are inferred (shown in the
+preview, never asked); goods bought from a supplier are redirected to a purchase invoice. Never automatic.

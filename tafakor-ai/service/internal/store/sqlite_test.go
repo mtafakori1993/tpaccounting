@@ -146,3 +146,33 @@ func TestTaskIsolation(t *testing.T) {
 		t.Fatal("task overwritten by another user")
 	}
 }
+
+func TestConversationOptimisticLocking(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	c := Conversation{ID: "c1", CompanyID: 1, UserID: 7, State: json.RawMessage(`{"turn":1}`)}
+	if err := s.SaveConversation(ctx, &c); err != nil || c.Version != 1 {
+		t.Fatal(err, c.Version)
+	}
+	a, _ := s.GetConversation(ctx, Scope{1, 7}, "c1")
+	b, _ := s.GetConversation(ctx, Scope{1, 7}, "c1")
+	a.State = json.RawMessage(`{"turn":2}`)
+	if err := s.SaveConversation(ctx, &a); err != nil {
+		t.Fatal(err)
+	}
+	b.State = json.RawMessage(`{"turn":"stale"}`)
+	if err := s.SaveConversation(ctx, &b); err != ErrConflict {
+		t.Fatal("stale writer must not overwrite newer state")
+	}
+	got, _ := s.GetConversation(ctx, Scope{1, 7}, "c1")
+	if string(got.State) != `{"turn":2}` || got.Version != 2 {
+		t.Fatalf("got %s v%d", got.State, got.Version)
+	}
+	if _, err := s.GetConversation(ctx, Scope{1, 8}, "c1"); err != ErrNotFound {
+		t.Fatal("conversation visible to another user")
+	}
+	dup := Conversation{ID: "c1", CompanyID: 1, UserID: 8}
+	if err := s.SaveConversation(ctx, &dup); err != ErrConflict {
+		t.Fatal("another user must not hijack a conversation id")
+	}
+}

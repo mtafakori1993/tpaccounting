@@ -12,6 +12,21 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+// ErrConflict: the record changed since it was read (optimistic locking).
+var ErrConflict = errors.New("conflict: state changed concurrently")
+
+// Conversation is one continuous multi-turn exchange with the assistant. State holds the
+// structured frame (intent + slots), the transcript and tool results.
+type Conversation struct {
+	ID        string          `json:"id"`
+	CompanyID int64           `json:"-"`
+	UserID    int64           `json:"-"`
+	Version   int64           `json:"version"`
+	State     json.RawMessage `json:"state"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+}
+
 // Scope identifies the tenant and user every record belongs to.
 type Scope struct {
 	CompanyID int64
@@ -136,6 +151,9 @@ type Repository interface {
 	AppendAudit(ctx context.Context, e AuditEntry) error
 	ListAudit(ctx context.Context, s Scope, taskID string, limit int) ([]AuditEntry, error)
 	PurgeAudit(ctx context.Context, before time.Time) (int64, error)
+
+	GetConversation(ctx context.Context, s Scope, id string) (Conversation, error)
+	SaveConversation(ctx context.Context, c *Conversation) error
 
 	SaveTask(ctx context.Context, t *Task) error
 	GetTask(ctx context.Context, s Scope, id string) (Task, error)

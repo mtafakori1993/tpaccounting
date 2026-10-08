@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/tafakorpardazan/tafakor-ai/internal/extract"
@@ -28,6 +29,7 @@ const (
 	EvTransfer        = "transfer"
 	EvOwnerCapital    = "owner_contribution"
 	EvOther           = "other"
+	EvInventoryIn     = "inventory_receipt" // goods enter stock (e.g. produced by the company)
 )
 
 type Event struct {
@@ -48,6 +50,15 @@ type Event struct {
 	CategoryID       int64   `json:"category_id"`      // chosen from the provided list, 0 if unsure
 	CategoryAltIDs   []int64 `json:"category_alt_ids"` // other plausible categories from the list
 	FXRate           string  `json:"fx_rate"`
+	// inventory operations (adding goods to stock)
+	ProductName            string `json:"product_name"`
+	ProductCode            string `json:"product_code"`
+	Unit                   string `json:"unit"`
+	Quantity               string `json:"quantity"`
+	UnitValue              string `json:"unit_value"`  // value per unit (as stated)
+	TotalValue             string `json:"total_value"` // only when the user states a total
+	Warehouse              string `json:"warehouse"`   // name, or "default"
+	ManufacturedInternally *bool  `json:"manufactured_internally"`
 }
 
 type Query struct {
@@ -61,12 +72,17 @@ type Query struct {
 }
 
 type Interpretation struct {
-	Intent                    string  `json:"intent"` // register | query | navigate | attach | pdf | undo | chat
-	UserRequestedRegistration bool    `json:"user_requested_registration"`
-	Event                     Event   `json:"event"`
-	Query                     Query   `json:"query"`
-	Reply                     string  `json:"reply"`
-	Confidence                float64 `json:"confidence"`
+	Intent                    string `json:"intent"` // register | query | navigate | attach | pdf | undo | chat
+	UserRequestedRegistration bool   `json:"user_requested_registration"`
+	// Follow-up turns: fields the user explicitly said do not exist ("no code"), and whether
+	// the user explicitly switched to a different operation.
+	ExplicitNull  []string `json:"explicit_null"`
+	IntentChanged bool     `json:"intent_changed"`
+	Cancel        bool     `json:"cancel"`
+	Event         Event    `json:"event"`
+	Query         Query    `json:"query"`
+	Reply         string   `json:"reply"`
+	Confidence    float64  `json:"confidence"`
 }
 
 // Hint is a learned/company rule shown to the model as a suggestion.
@@ -91,20 +107,36 @@ EVENT TYPES:
 - supplier_payment: the company paid a supplier.
 - purchase / sales_invoice: an invoice for goods/services bought/sold (not yet paid).
 - transfer: money moved between the company's own cash/bank accounts.
+- inventory_receipt: goods are ADDED TO STOCK (e.g. a product manufactured by the company). Fill product_name, product_code,
+  unit (e.g. "piece"/"عدد"), quantity, unit_value (value per unit as stated; if the user states a value for the product without saying
+  "total", it is the unit value), total_value (only if explicitly a total), warehouse ("default" if they say default),
+  manufactured_internally (true if made by the company). This is NOT a purchase or sales invoice.
 PAID_BY (for expenses/payments): company_card | bank | cash | personal (an employee/owner paid from their own pocket) | unknown.
 Dates: copy exactly as given (Jalali like 1404/07/16 or Gregorian). Amounts: digits only, no separators; keep the currency the user/document states (IRR=ریال, IRT=تومان, USD...).
 
 INTENTS: register | query (questions about data: unpaid invoices, this month's expenses, balances) | navigate (open a screen/report) | attach (attach the uploaded file to an existing document) | pdf (generate a PDF of a document) | undo | chat (anything else; put a short helpful answer in "reply" in the user's language).
 For query.kind use one of: unpaid_invoices, unpaid_bills, expenses, transactions, report, open_screen, party_balance. Dates as YYYY-MM-DD (Gregorian).
 
+EXPLICIT NONE: if the user says a field does not exist ("no code", "بدون کد", "doesn't have a code"), put that field name in
+"explicit_null" (e.g. ["product_code"]) — that is a complete answer, not missing information.
+
 Return ONLY JSON:
-{"intent":"","user_requested_registration":false,"confidence":0.0,"reply":"",
- "event":{"type":"","amount":"","currency":"","date":"","counterparty":"","counterparty_role":"","project":"","subject":"","purpose":"","paid_by":"","paid_by_person":"","treasury_hint":"","reference":"","description":"","category_id":0,"category_alt_ids":[],"fx_rate":""},
+{"intent":"","user_requested_registration":false,"confidence":0.0,"reply":"","explicit_null":[],"intent_changed":false,"cancel":false,
+ "event":{"type":"","amount":"","currency":"","date":"","counterparty":"","counterparty_role":"","project":"","subject":"","purpose":"","paid_by":"","paid_by_person":"","treasury_hint":"","reference":"","description":"","category_id":0,"category_alt_ids":[],"fx_rate":"",
+   "product_name":"","product_code":"","unit":"","quantity":"","unit_value":"","total_value":"","warehouse":"","manufactured_internally":null},
  "query":{"kind":"","report":"","from":"","to":"","party":"","screen":"","q":""}}`
 
 // InterpretInput collects everything the model may see.
+// Turn is one message of the conversation history.
+type Turn struct {
+	Role string `json:"role"` // user | assistant
+	Text string `json:"text"`
+}
+
 type InterpretInput struct {
 	UserText    string
+	History     []Turn // earlier turns of this conversation (oldest first)
+	Frame       *Frame // the operation in progress; non-nil = this message is a FOLLOW-UP
 	Extractions []*extract.Extraction
 	Config      *tools.CompanyConfig
 	Hints       []Hint
@@ -149,6 +181,17 @@ func buildPrompt(in InterpretInput) string {
 	for i, x := range in.Extractions {
 		fmt.Fprintf(&b, "<document_data index=%d>%s</document_data>\n", i+1, x.Summary())
 	}
+	if len(in.History) > 0 {
+		b.WriteString("<conversation_so_far> (context only; earlier user turns are already reflected in the operation state)\n")
+		for _, t := range in.History {
+			fmt.Fprintf(&b, "%s: %s\n", t.Role, strings.ReplaceAll(t.Text, "</conversation_so_far>", ""))
+		}
+		b.WriteString("</conversation_so_far>\n")
+	}
+	if in.Frame != nil {
+		b.WriteString("<operation_in_progress>\n" + in.Frame.Summary() + "</operation_in_progress>\n")
+		b.WriteString(followUpRules)
+	}
 	fmt.Fprintf(&b, "<user_message>%s</user_message>\n", strings.ReplaceAll(in.UserText, "</user_message>", ""))
 	return b.String()
 }
@@ -160,6 +203,14 @@ func jalaliToday(iso string) string {
 	}
 	return normalize.FormatJalali(t.Year(), int(t.Month()), t.Day())
 }
+
+const followUpRules = `FOLLOW-UP MODE: the user is continuing the operation in progress (it may answer the assistant's last question).
+- Keep "intent" and "event.type" of the operation in progress. Set "intent_changed": true ONLY if the user explicitly asks for a
+  different operation; set "cancel": true only if the user explicitly cancels.
+- In "event" put ONLY information stated in the NEW user message (leave other fields empty; known fields are kept automatically).
+- Put fields the user says do not exist into "explicit_null".
+- "user_requested_registration" stays true when the operation in progress was requested.
+`
 
 // Interpret runs the structured LLM step.
 func Interpret(ctx context.Context, ai provider.AIProvider, model string, in InterpretInput) (*Interpretation, provider.Result, error) {
@@ -175,7 +226,7 @@ func Interpret(ctx context.Context, ai provider.AIProvider, model string, in Int
 }
 
 var validIntents = map[string]bool{"register": true, "query": true, "navigate": true, "attach": true, "pdf": true, "undo": true, "chat": true}
-var validEvents = map[string]bool{EvExpense: true, EvLoanReceived: true, EvCustomerReceipt: true, EvCustomerAdvance: true, EvSupplierPayment: true,
+var validEvents = map[string]bool{EvInventoryIn: true, EvExpense: true, EvLoanReceived: true, EvCustomerReceipt: true, EvCustomerAdvance: true, EvSupplierPayment: true,
 	EvPurchase: true, EvSalesInvoice: true, EvTransfer: true, EvOwnerCapital: true, EvOther: true}
 
 // ParseInterpretation validates model output. userText is used for deterministic overrides.
@@ -197,12 +248,38 @@ func ParseInterpretation(text, userText string) (*Interpretation, error) {
 	if it.Confidence < 0 || it.Confidence > 1 {
 		it.Confidence = 0
 	}
+	it.ExplicitNull = append(it.ExplicitNull, DetectExplicitNulls(userText)...)
 	for _, p := range []*string{&it.Event.Counterparty, &it.Event.Project, &it.Event.Subject, &it.Event.Purpose, &it.Event.Description,
-		&it.Event.PaidByPerson, &it.Event.TreasuryHint, &it.Event.Reference, &it.Reply} {
+		&it.Event.PaidByPerson, &it.Event.TreasuryHint, &it.Event.Reference, &it.Reply, &it.Event.ProductName, &it.Event.ProductCode,
+		&it.Event.Unit, &it.Event.Quantity, &it.Event.UnitValue, &it.Event.TotalValue, &it.Event.Warehouse} {
 		*p = strings.TrimSpace(*p)
 		if r := []rune(*p); len(r) > 500 {
 			*p = string(r[:500])
 		}
 	}
 	return &it, nil
+}
+
+var nullPatterns = map[string][]string{
+	"product_code": {"no code", "no product code", "without code", "without a code", "doesn't have a code", "does not have a code", "has no code",
+		"بدون کد", "کد ندارد", "کد نداره", "کدی ندارد", "کدی نداره", "کد نمی خواد", "کد نمیخواد", "بی کد"},
+	"reference": {"no reference", "without reference", "بدون شماره پیگیری", "شماره پیگیری ندارد"},
+	"project":   {"no project", "without project", "بدون پروژه"},
+}
+
+// DetectExplicitNulls is a deterministic safety net: explicit "none" answers in the user's
+// own words are never lost even if the model forgets to report them.
+func DetectExplicitNulls(userText string) []string {
+	t := " " + normalize.Text(userText) + " "
+	var out []string
+	for field, pats := range nullPatterns {
+		for _, p := range pats {
+			if strings.Contains(t, " "+normalize.Text(p)+" ") || strings.Contains(t, " "+normalize.Text(p)+",") {
+				out = append(out, field)
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }

@@ -379,15 +379,24 @@ class Widget {
   newTask() {
     this.abort?.abort();
     session('task', null);
+    session('conv', null); // a new conversation
     this.chatLog.replaceChildren();
     this.tab = 'chat';
     this.renderTabs();
     this.show();
   }
 
+  queued = false;
+
   async submit() {
     const text = this.input.value.trim();
-    if ((!text && !this.pending.length) || this.busy) return;
+    if (!text && !this.pending.length) return;
+    if (this.busy) {
+      // never drop what the user typed: send it as soon as the current step finishes
+      this.queued = true;
+      this.hint.textContent = t('queued');
+      return;
+    }
     const uploads = this.pending.map((p) => p.id);
     this.chatLog.append(h('div', { class: 'msg user' }, text || this.pending.map((p) => p.name).join(', ')));
     this.input.value = '';
@@ -400,7 +409,8 @@ class Widget {
     this.tab = 'chat';
     this.renderTabs();
     this.show();
-    await this.run('/tasks', { message: text, uploads, ask_this_time: this.askThisTime, exec_mode: store('exec') ?? 'ui', transcript });
+    await this.run('/tasks', { message: text, uploads, ask_this_time: this.askThisTime, exec_mode: store('exec') ?? 'ui', transcript,
+      conversation_id: session('conv') ?? '' });
   }
 
   // ---------- task streaming ----------
@@ -420,6 +430,9 @@ class Widget {
     try {
       await api.stream(path, body, (ev, d) => {
         switch (ev) {
+          case 'conversation':
+            session('conv', d.conversation_id);
+            break;
           case 'task':
             session('task', d.task_id);
             session('lastTask', d.task_id);
@@ -495,6 +508,11 @@ class Widget {
       this.busy = false;
       this.orb.classList.remove('busy');
       scroll();
+      if (this.queued) {
+        this.queued = false;
+        this.hint.textContent = '';
+        queueMicrotask(() => void this.submit());
+      }
     }
   }
 
@@ -542,6 +560,8 @@ class Widget {
       [t('documentType'), d.document_type], [t('amount'), d.amount ? num(d.amount) + ' ' + (d.currency ?? '') + (d.original_amount ? ` (${d.original_amount})` : '') : undefined],
       [t('date'), lang() === 'fa' ? d.date_jalali : d.date], [t('party'), d.party], [t('project'), d.project], [t('account'), d.treasury],
       [t('counterAccount'), d.counter_account], [t('category'), d.category], [t('reference'), d.reference], [t('description'), d.description],
+      [t('product'), d.product], [t('productCode'), d.product_code], [t('quantity'), d.quantity ? num(d.quantity) + (d.unit ? ' ' + d.unit : '') : undefined],
+      [t('unitValue'), d.unit_value ? num(d.unit_value) + ' ' + (d.currency ?? '') : undefined], [t('warehouse'), d.warehouse],
       [t('attachment'), d.attachment],
     ];
     const card = h('div', { class: 'card' },
@@ -697,7 +717,51 @@ class Widget {
 
   abortUI = false;
 
+  /** After a refresh: rebuild the conversation (transcript + open question/approval) from the server. */
+  async restoreConversation(): Promise<boolean> {
+    const conv = session('conv');
+    if (!conv) return false;
+    let v: any;
+    try {
+      v = await api.get<any>(`/conversations/${conv}`);
+    } catch {
+      session('conv', null);
+      return false;
+    }
+    const bubbles: HTMLElement[] = [];
+    for (const m of v.messages ?? []) {
+      if (m.role === 'user' && m.kind === 'text' && m.text) bubbles.push(h('div', { class: 'msg user' }, m.text));
+      else if (m.role === 'user' && m.kind === 'answer' && m.text) bubbles.push(h('div', { class: 'msg user' }, m.text));
+      else if (m.role === 'assistant' && ['text', 'error', 'result'].includes(m.kind) && m.text)
+        bubbles.push(h('div', { class: 'msg ai' + (m.kind === 'error' ? ' err' : '') }, m.text));
+      else if (m.role === 'assistant' && m.kind === 'question') bubbles.push(h('div', { class: 'msg ai' }, (m.data?.text as string) ?? m.text));
+    }
+    if (!bubbles.length) return false;
+    this.chatLog.replaceChildren(...bubbles);
+    const task = v.task;
+    if (task) {
+      session('task', task.id);
+      session('lastTask', task.id);
+      if (task.stage === 'awaiting_answer' && task.proposal?.question) {
+        this.chatLog.lastElementChild?.remove(); // the question bubble becomes a live card
+        this.chatLog.append(this.questionCard(task.proposal.question));
+      } else if (task.stage === 'awaiting_approval') {
+        void this.run(`/tasks/${task.id}/reissue`, {});
+      } else if (task.stage === 'ui_failed') {
+        this.chatLog.append(this.uiFailedCard({ task_id: task.id, message: task.message || t('stopped'), can_fallback: true }));
+      } else if (task.stage === 'ui_running' && task.ui_plan) {
+        const card = h('div', { class: 'card' }, h('h4', {}, t('resumeQ')), h('div', { class: 'actions' },
+          h('button', { class: 'btn', onclick: async () => { await api.send('POST', `/tasks/${task.id}/cancel`).catch(() => undefined); card.remove(); } }, t('cancel')),
+          h('button', { class: 'btn primary', onclick: async () => { card.remove(); await this.runUI({ ...task.ui_plan, task_id: task.id }); } }, t('resume'))));
+        this.chatLog.append(card);
+      }
+    }
+    this.show();
+    return true;
+  }
+
   async resume() {
+    if (await this.restoreConversation()) return;
     const id = session('task');
     if (!id) return;
     try {

@@ -90,3 +90,11 @@ Branch: `feature/tafakor-ai` (never pushed, never merged by the agent).
 - Live scenarios on a fresh demo company: 32/32. SSE streaming end to end: 16 deltas over 8.9 s (not buffered).
 - Browser e2e (virtual cursor fills the real receipt form): 13/13. Tag coverage: 60 routes, 0 problems (fa + en).
 - Removal procedure verified (tree identical to `main`, builds and tests pass).
+
+### Follow-up — conversation memory bug: FIXED
+- Persisted, versioned conversations; follow-ups merged into a structured frame; only missing fields asked; intent kept;
+  explicit "none" answers complete; refresh restores transcript + open question/approval; tool calls/results stored;
+  concurrent requests serialized and stale writes rejected. New operation: inventory receipt from production.
+- Tests: frame merge/null detection (unit), Galatea multi-turn, intent stability, persistence across HTTP requests and
+  refresh, tool results in state, concurrency (`-race`), details-card answers. Live: 37/37 incl. the Galatea conversation;
+  verified in Chrome (refresh mid-conversation, follow-up typed in the composer, registered and checked in the app).

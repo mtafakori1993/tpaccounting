@@ -150,9 +150,33 @@ type StartRequest struct {
 	AskThisTime bool     `json:"ask_this_time"`
 	ExecMode    string   `json:"exec_mode"`  // ui (default when the widget can drive the page) | api
 	Transcript  bool     `json:"transcript"` // the text came from a (user-confirmed) voice transcript
+	// ConversationID continues an existing conversation (empty = new conversation).
+	ConversationID string `json:"conversation_id"`
+	// pre is an interpretation already made for this message (explicit change of subject).
+	pre *classify.Interpretation
 }
 
+// Start handles one user message. Inside an open operation it is a follow-up that is merged
+// into the existing state; otherwise a new operation starts — with the conversation history.
 func (a *Agent) Start(ctx context.Context, u *User, req StartRequest, e Emitter) string {
+	var taskID string
+	a.withConversation(ctx, u, req.ConversationID, e, func(c *conversation, e Emitter) {
+		text := strings.TrimSpace(req.Message)
+		c.add(ConvMessage{Role: "user", Kind: "text", Text: text})
+		if t, st := a.activeOperation(ctx, u, c); t != nil && text != "" && len(req.Uploads) == 0 {
+			taskID = t.ID
+			if req.AskThisTime {
+				st.AskThisTime = true
+			}
+			a.followUp(ctx, u, t, st, text, c, e)
+			return
+		}
+		taskID = a.startTask(ctx, u, req, c, e)
+	})
+	return taskID
+}
+
+func (a *Agent) startTask(ctx context.Context, u *User, req StartRequest, c *conversation, e Emitter) string {
 	st := &State{Stage: StageNew, Lang: lang(u), UserText: strings.TrimSpace(req.Message), Answers: map[string]string{}, AskThisTime: req.AskThisTime,
 		ExecMode: "api"}
 	if req.ExecMode == "ui" {
@@ -160,6 +184,9 @@ func (a *Agent) Start(ctx context.Context, u *User, req StartRequest, e Emitter)
 	}
 	if len([]rune(st.UserText)) > 4000 {
 		st.UserText = string([]rune(st.UserText)[:4000])
+	}
+	if c != nil {
+		st.ConversationID = c.row.ID
 	}
 	t := &store.Task{ID: newTaskID(), CompanyID: u.Scope.CompanyID, UserID: u.Scope.UserID, Request: st.UserText}
 	e.Emit("task", map[string]any{"task_id": t.ID})
@@ -216,15 +243,30 @@ func (a *Agent) Start(ctx context.Context, u *User, req StartRequest, e Emitter)
 	}
 	hints := a.hints(ctx, u)
 	ai, model := a.Router.For(provider.PurposeClassify, "")
-	it, res, err := classify.Interpret(ctx, ai, model, classify.InterpretInput{UserText: st.UserText, Extractions: st.Extractions, Config: cfg,
-		Hints: hints, Knowledge: a.Knowledge, Today: a.today(), Lang: st.Lang})
-	a.cost(ctx, u, t.ID, res)
+	var hist []classify.Turn
+	if c != nil {
+		hist = c.history(12)
+		if n := len(hist); n > 0 && hist[n-1].Role == "user" && hist[n-1].Text == st.UserText {
+			hist = hist[:n-1]
+		}
+	}
+	it, res, err := req.pre, provider.Result{Model: st.Model}, error(nil)
+	if it == nil {
+		it, res, err = classify.Interpret(ctx, ai, model, classify.InterpretInput{UserText: st.UserText, History: hist, Extractions: st.Extractions, Config: cfg,
+			Hints: hints, Knowledge: a.Knowledge, Today: a.today(), Lang: st.Lang})
+		a.cost(ctx, u, t.ID, res)
+	}
 	if err != nil {
 		a.fail(ctx, u, t, st, e, a.plain(st.Lang, err), err)
 		return t.ID
 	}
 	st.Interp = it
 	st.Model = res.Model
+	if it.Intent == "register" {
+		// the operation's structured state; later messages are merged into it
+		st.Frame = classify.NewFrame(it, st.UserText)
+		st.Interp.Event = st.Frame.Event
+	}
 	a.audit(ctx, u, t.ID, "interpretation", map[string]any{"model": res.Model, "interpretation": it})
 	a.save(ctx, t, st)
 
@@ -296,8 +338,26 @@ func (a *Agent) resolveContext(ctx context.Context, u *User, st *State, cfg *too
 		}
 	}
 	aliases, _ := a.Store.ListAliases(ctx, u.Scope)
-	return &classify.Context{Lang: st.Lang, Today: a.today(), UserText: st.UserText, Interp: st.Interp, Extractions: st.Extractions,
-		Config: cfg, Parties: parties, Accounts: accounts, Aliases: aliases, Learn: a.Learn, Scope: u.Scope, Answers: st.Answers}, nil
+	userText := st.UserText
+	if st.Frame != nil {
+		userText = st.Frame.UserText()
+	}
+	rc := &classify.Context{Lang: st.Lang, Today: a.today(), UserText: userText, Interp: st.Interp, Extractions: st.Extractions,
+		Config: cfg, Parties: parties, Accounts: accounts, Aliases: aliases, Learn: a.Learn, Scope: u.Scope, Answers: st.Answers, Frame: st.Frame}
+	if st.Interp != nil && st.Interp.Event.Type == classify.EvInventoryIn {
+		if u.Me.Can("products.view") {
+			name := st.Interp.Event.ProductName
+			if rc.Products, err = tools.ListProducts(ctx, env, name); err != nil {
+				return nil, err
+			}
+		}
+		if u.Me.Can("inventory.view") {
+			if rc.Warehouses, err = tools.ListWarehouses(ctx, env); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return rc, nil
 }
 
 func (a *Agent) register(ctx context.Context, u *User, t *store.Task, st *State, cfg *tools.CompanyConfig, e Emitter) {
@@ -321,7 +381,11 @@ func (a *Agent) register(ctx context.Context, u *User, t *store.Task, st *State,
 	}
 	st.Proposal = p
 	if tool, ok := a.Tools.Get(p.Action); ok && p.Action != "" {
-		for _, perm := range tool.Permissions {
+		perms := tool.Permissions
+		if p.Inventory != nil && p.Inventory.NewProduct != nil {
+			perms = append(append([]string{}, perms...), "products.create")
+		}
+		for _, perm := range perms {
 			if !u.Me.Can(perm) {
 				a.audit(ctx, u, t.ID, "policy", map[string]any{"decision": "blocked", "missing_permission": perm})
 				a.stop(ctx, u, t, st, e, tr(st.Lang, "You don't have permission to do this in the accounting app ("+perm+"), so I can't do it either.",
@@ -492,6 +556,8 @@ func dateOf(p *classify.Proposal) string {
 		return p.Expense.Date
 	case p.Invoice != nil:
 		return p.Invoice.Date
+	case p.Inventory != nil:
+		return p.Inventory.Date
 	}
 	return ""
 }
@@ -517,6 +583,8 @@ func validateArgs(p *classify.Proposal, u *User) error {
 		if p.Invoice.PartyID <= 0 || len(p.Invoice.Items) == 0 {
 			return fmt.Errorf("invoice incomplete")
 		}
+	case p.Inventory != nil:
+		return p.Inventory.Validate(dec)
 	}
 	return nil
 }

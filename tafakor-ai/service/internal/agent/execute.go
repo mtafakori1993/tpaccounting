@@ -44,6 +44,7 @@ func (a *Agent) execute(ctx context.Context, u *User, t *store.Task, st *State, 
 	out, err := a.Tools.Call(ctx, env, p.Action, st.ArgsJSON, auth)
 	a.audit(ctx, u, t.ID, "tool_call", map[string]any{"tool": p.Action, "args": json.RawMessage(st.ArgsJSON), "mode": auth.Mode, "ok": err == nil,
 		"error": errString(err)})
+	e.Emit("tool", map[string]any{"tool": p.Action, "args": json.RawMessage(st.ArgsJSON), "ok": err == nil, "error": errString(err), "result": out})
 	if err != nil {
 		if ae, ok := accounting.AsAPIError(err); ok && ae.Code == "budget_confirmation_required" && !budgetConfirm(p) {
 			// soft budget limit: ask the human, with the confirmation header bound into the new payload
@@ -72,6 +73,7 @@ func (a *Agent) execute(ctx context.Context, u *User, t *store.Task, st *State, 
 	_ = a.Store.Remember(ctx, u.Scope, idemKey, b)
 	a.audit(ctx, u, t.ID, "accounting_result", map[string]any{"entity_type": res.EntityType, "entity_id": res.EntityID, "number": res.Number,
 		"journal_number": res.JournalNumber, "verified": res.Verified, "mismatches": res.Mismatches})
+	e.Emit("tool", map[string]any{"tool": "verify", "ok": res.Verified, "result": res})
 	if res.EntityID > 0 {
 		a.attachUploads(ctx, u, t, st, e)
 	}
@@ -126,7 +128,7 @@ func summary(st *State) string {
 	if !r.Verified {
 		return tr(st.Lang, "The document was sent but I could not verify it: ", "سند ارسال شد اما نتوانستم آن را تایید کنم: ") + strings.Join(r.Mismatches, ", ")
 	}
-	kind := map[string][2]string{"treasury_transaction": {"Treasury document", "سند خزانه‌داری"}, "expense": {"Expense", "هزینه"}, "invoice": {"Draft invoice", "پیش‌نویس فاکتور"}}[r.EntityType]
+	kind := map[string][2]string{"treasury_transaction": {"Treasury document", "سند خزانه‌داری"}, "expense": {"Expense", "هزینه"}, "invoice": {"Draft invoice", "پیش‌نویس فاکتور"}, "stock_document": {"Stock receipt", "رسید انبار"}}[r.EntityType]
 	k := kind[0]
 	if st.Lang == "fa" {
 		k = kind[1]
@@ -180,6 +182,40 @@ func (a *Agent) verify(ctx context.Context, u *User, st *State, out any) *Result
 			r.Party = *got.PartyName
 		}
 		r.Mismatches = compareExpense(p.Expense, &got)
+	case *tools.StockDocument:
+		var got tools.StockDocument
+		err := a.Acc.Do(ctx, u.Cred, accounting.Call{Method: http.MethodGet, Path: fmt.Sprintf("/inventory/documents/%d", x.ID)}, &got)
+		r.EntityType, r.EntityID, r.Route = "stock_document", x.ID, fmt.Sprintf("/inventory/documents/%d", x.ID)
+		if err != nil {
+			r.Mismatches = append(r.Mismatches, "read-back failed")
+			return r
+		}
+		r.Number, r.Date, r.Status = got.Number, got.Date[:min(10, len(got.Date))], got.Status
+		want := p.Inventory
+		if got.Status != "posted" {
+			r.Mismatches = append(r.Mismatches, "status="+got.Status)
+		}
+		if got.WarehouseID != want.WarehouseID {
+			r.Mismatches = append(r.Mismatches, "warehouse")
+		}
+		if len(got.Lines) != 1 {
+			r.Mismatches = append(r.Mismatches, "lines")
+		} else {
+			l := got.Lines[0]
+			q, _ := decimal.NewFromString(want.Quantity)
+			c, _ := decimal.NewFromString(want.UnitCost)
+			if !l.Quantity.Equal(q) {
+				r.Mismatches = append(r.Mismatches, "quantity")
+			}
+			if !l.UnitCost.Round(2).Equal(c.Round(2)) {
+				r.Mismatches = append(r.Mismatches, "unit_cost")
+			}
+			if want.ProductID != nil && l.ProductID != *want.ProductID {
+				r.Mismatches = append(r.Mismatches, "product")
+			}
+			r.Party = l.ProductName
+			r.Amount = l.Quantity.Mul(l.UnitCost).Round(0).String()
+		}
 	case *tools.Invoice:
 		var got tools.Invoice
 		side := "sales"
@@ -303,7 +339,7 @@ type ApproveRequest struct {
 
 // Approve consumes the single-use token for the payload stored on the task. The
 // payload hash is recomputed server-side; the client's copy is only a consistency check.
-func (a *Agent) Approve(ctx context.Context, u *User, id string, req ApproveRequest, e Emitter) {
+func (a *Agent) approveIn(ctx context.Context, u *User, id string, req ApproveRequest, e Emitter) {
 	t, st, err := a.load(ctx, u, id)
 	if err != nil {
 		e.Emit("error", map[string]any{"message": "task not found"})

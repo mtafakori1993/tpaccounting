@@ -28,7 +28,7 @@ type AnswerRequest struct {
 	Remember   bool   `json:"remember"`
 }
 
-func (a *Agent) Answer(ctx context.Context, u *User, id string, req AnswerRequest, e Emitter) {
+func (a *Agent) answerIn(ctx context.Context, u *User, id string, req AnswerRequest, c *conversation, e Emitter) {
 	t, st, err := a.load(ctx, u, id)
 	if err != nil {
 		e.Emit("error", map[string]any{"message": "task not found"})
@@ -41,6 +41,14 @@ func (a *Agent) Answer(ctx context.Context, u *User, id string, req AnswerReques
 	q := st.Proposal.Question
 	if req.QuestionID != q.ID {
 		e.Emit("error", map[string]any{"message": tr(st.Lang, "That answer is for a different question.", "این پاسخ مربوط به سوال دیگری است.")})
+		return
+	}
+	if q.FreeText && q.Field == "details" {
+		// a free-text answer about several missing fields is a follow-up message: merge it
+		if c != nil {
+			c.add(ConvMessage{Role: "user", Kind: "text", Text: strings.TrimSpace(req.Value), TaskID: t.ID})
+		}
+		a.followUp(ctx, u, t, st, strings.TrimSpace(req.Value), c, e)
 		return
 	}
 	v := strings.TrimSpace(normalize.Digits(req.Value))
@@ -145,7 +153,7 @@ type EditRequest struct {
 // Edit applies the user's corrections from the review screen, re-resolves (every id
 // is re-validated against the company's data), voids the old approval and, for each
 // changed suggestion, offers to remember it.
-func (a *Agent) Edit(ctx context.Context, u *User, id string, req EditRequest, e Emitter) {
+func (a *Agent) editIn(ctx context.Context, u *User, id string, req EditRequest, e Emitter) {
 	t, st, err := a.load(ctx, u, id)
 	if err != nil {
 		e.Emit("error", map[string]any{"message": "task not found"})
@@ -255,7 +263,7 @@ func (a *Agent) Cancel(ctx context.Context, u *User, id string) error {
 
 // Undo prepares a cancellation of a registered document. Cancellations are never
 // automatic: an approval card with a single-use token is always shown.
-func (a *Agent) Undo(ctx context.Context, u *User, id string, e Emitter) {
+func (a *Agent) undoIn(ctx context.Context, u *User, id string, e Emitter) {
 	_, src, err := a.load(ctx, u, id)
 	if err != nil || src.Result == nil || !src.Result.Verified || src.Result.Undone {
 		e.Emit("error", map[string]any{"message": "nothing to undo"})
@@ -701,7 +709,22 @@ func (a *Agent) chat(ctx context.Context, u *User, t *store.Task, st *State, e E
 	}
 	status(e, st.Lang, "thinking")
 	ai, model := a.Router.For(provider.PurposeChat, "")
-	msgs := []provider.Message{provider.Text("system", chatSystem+"\n\nApp guide:\n"+a.Knowledge), provider.Text("user", st.UserText)}
+	msgs := []provider.Message{provider.Text("system", chatSystem+"\n\nApp guide:\n"+a.Knowledge)}
+	// the conversation so far, so the answer continues it instead of starting over
+	if st.ConversationID != "" {
+		if row, err := a.Store.GetConversation(ctx, u.Scope, st.ConversationID); err == nil {
+			c := &conversation{row: row}
+			_ = json.Unmarshal(row.State, &c.state)
+			hist := c.history(12)
+			if n := len(hist); n > 0 && hist[n-1].Role == "user" && hist[n-1].Text == st.UserText {
+				hist = hist[:n-1]
+			}
+			for _, h := range hist {
+				msgs = append(msgs, provider.Text(h.Role, h.Text))
+			}
+		}
+	}
+	msgs = append(msgs, provider.Text("user", st.UserText))
 	res, err := ai.Stream(ctx, provider.Request{Model: model, Messages: msgs, MaxTokens: 700, Temperature: 0.3}, func(d string) {
 		e.Emit("delta", map[string]string{"text": d})
 	})

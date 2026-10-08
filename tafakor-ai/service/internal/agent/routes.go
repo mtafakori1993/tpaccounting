@@ -89,11 +89,15 @@ func (h *HTTP) Register(mux *http.ServeMux, auth func(http.Handler) http.Handler
 		}
 		h.A.UIResult(ctx, u, r.PathValue("id"), req, e)
 	}))
+	handle("POST /ai-api/tasks/{id}/reissue", h.sse(func(ctx context.Context, u *User, r *http.Request, e Emitter) {
+		h.A.Reissue(ctx, u, r.PathValue("id"), e)
+	}))
 	handle("POST /ai-api/tasks/{id}/cancel", h.cancel)
 	handle("POST /ai-api/tasks/{id}/remember", h.remember)
 	handle("GET /ai-api/tasks/{id}", h.getTask)
 	handle("GET /ai-api/tasks", h.listTasks)
 	handle("GET /ai-api/activity", h.activity)
+	handle("GET /ai-api/conversations/{id}", h.conversation)
 	handle("GET /ai-api/rules", h.listRules)
 	handle("PUT /ai-api/rules/{id}", h.updateRule)
 	handle("DELETE /ai-api/rules/{id}", h.deleteRule)
@@ -479,4 +483,13 @@ func (h *HTTP) audit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, 200, items)
+}
+
+func (h *HTTP) conversation(w http.ResponseWriter, r *http.Request) {
+	v, err := h.A.ConversationView(r.Context(), user(r), r.PathValue("id"))
+	if err != nil {
+		httpapi.WriteErr(w, 404, "not_found", "Conversation not found.")
+		return
+	}
+	httpapi.WriteJSON(w, 200, v)
 }

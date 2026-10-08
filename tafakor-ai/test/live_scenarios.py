@@ -242,8 +242,12 @@ def main():
     ev = admin.stream("/ai-api/tasks", {"message": "اشتراک وی پی ان این ماه را هم به مبلغ ۵۰۰ هزار ریال با کارت بانک ملت شرکت پرداخت کردیم", "exec_mode": "api"})
     show("VPN third time (rule suggests)", ev)
     q = next((d for e, d in ev if e == "question" and d["field"] == "category"), None)
-    check("learning: next time it suggests the learned category first ('last time you chose X')", bool(q and q["options"][0]["value"] == str(target) and q["options"][0].get("recommended")),
-          json.dumps(q, ensure_ascii=False)[:300] if q else "no category question")
+    pv3 = last(ev, "preview") or {}
+    learned_used = (pv3.get("display") or {}).get("category") == next(c["name"] for c in cats if c["id"] == target) and "rule_trusted" in ((pv3.get("decision") or {}).get("reasons") or [])
+    # either it asks "last time you chose X, same?" (model disagreed) or applies X and flags it for confirmation (model agreed)
+    check("learning: next time the learned category is suggested first / applied and flagged",
+          bool(q and q["options"][0]["value"] == str(target) and q["options"][0].get("recommended")) or learned_used,
+          json.dumps(q, ensure_ascii=False)[:300] if q else json.dumps(pv3.get("display"), ensure_ascii=False)[:200])
     t3 = last(ev, "task")
     if t3:
         admin.req("POST", f"/ai-api/tasks/{t3['task_id']}/cancel")
@@ -302,6 +306,27 @@ def main():
     ev = admin.stream("/ai-api/tasks", {"message": "Show me unpaid customer invoices", "exec_mode": "api"})
     show("query: unpaid invoices", ev)
     check("query: unpaid invoices answered", last(ev, "message") is not None)
+
+    # ---- 9. Multi-turn memory: the Galatea conversation (never re-ask what is known)
+    ev = admin.stream("/ai-api/tasks", {"message": "Add a product named Galatea to our inventory. It is manufactured by our company and has a value of 10,000,000 tomans.", "exec_mode": "api"})
+    show("galatea turn 1", ev)
+    conv = (last(ev, "conversation") or {}).get("conversation_id", "")
+    q1 = last(ev, "question")
+    check("memory: turn 1 asks only for missing fields (not name/value/document type)", bool(q1) and not any(w in q1["text"].lower() for w in ("name", "price", "purchase", "sales", "value")),
+          q1 and q1["text"])
+    ev2 = admin.stream("/ai-api/tasks", {"message": "10 units, unit = piece, default warehouse, no product code.", "exec_mode": "api", "conversation_id": conv})
+    show("galatea turn 2", ev2)
+    check("memory: same conversation and operation continued", (last(ev2, "conversation") or {}).get("conversation_id") == conv and last(ev2, "task") == last(ev, "task"))
+    check("memory: nothing asked again once complete", last(ev2, "question") is None, json.dumps(last(ev2, "question"), ensure_ascii=False)[:200])
+    pv = last(ev2, "preview") or {}
+    d = pv.get("display") or {}
+    check("memory: all facts merged (Galatea, 10 piece, 100,000,000 IRR/unit, no code, default warehouse)",
+          pv.get("action") == "create_inventory_receipt" and d.get("product") == "Galatea" and d.get("quantity") == "10" and d.get("unit_value") == "100000000"
+          and bool(d.get("product_code")) and bool(d.get("warehouse")), json.dumps(d, ensure_ascii=False)[:300])
+    view = admin.req("GET", f"/ai-api/conversations/{conv}")
+    check("memory: refresh restores the conversation (transcript + open approval)", len([m for m in view["messages"] if m["role"] == "user"]) == 2 and view["task"]["stage"] == "awaiting_approval")
+    if last(ev2, "approval"):
+        admin.req("POST", f"/ai-api/tasks/{last(ev2, 'approval')['task_id']}/cancel")
 
     print("\n=== SUMMARY")
     failed = [r for r in RESULTS if not r[1]]

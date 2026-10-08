@@ -168,7 +168,7 @@ func (a *Agent) startUI(ctx context.Context, u *User, t *store.Task, st *State, 
 }
 
 // UIResult receives the widget's report and verifies the outcome through the API.
-func (a *Agent) UIResult(ctx context.Context, u *User, id string, req UIResult, e Emitter) {
+func (a *Agent) uiResultIn(ctx context.Context, u *User, id string, req UIResult, e Emitter) {
 	t, st, err := a.load(ctx, u, id)
 	if err != nil {
 		e.Emit("error", map[string]any{"message": "task not found"})
@@ -274,6 +274,8 @@ func uiUnsupported(p *classify.Proposal, lang string) string {
 	case p.Tx != nil && p.Tx.BudgetConfirm, p.Expense != nil && p.Expense.BudgetConfirm:
 		return tr(lang, "This posting needs a budget confirmation, so I'm registering it directly with your confirmation.",
 			"این ثبت نیاز به تایید بودجه دارد؛ پس با تایید شما مستقیم ثبت می‌کنم.")
+	case p.Inventory != nil:
+		return tr(lang, "Stock receipts are registered directly (same approved details).", "رسید انبار مستقیم ثبت می‌شود (همان جزئیات تاییدشده).")
 	case p.Expense != nil && p.Expense.PaymentMethod == "credit":
 		return tr(lang, "The expense form only lists suppliers for credit expenses, so I'm registering this directly.",
 			"فرم هزینه برای هزینه نسیه فقط تأمین‌کننده‌ها را نشان می‌دهد؛ پس مستقیم ثبت می‌کنم.")

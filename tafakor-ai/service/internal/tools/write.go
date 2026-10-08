@@ -25,6 +25,7 @@ func writeTools() []Tool {
 		{Name: "attach_document", Kind: Write, Run: attachDocument},
 		{Name: "generate_pdf", Kind: Write, Run: generatePDF},
 		{Name: "cancel_document", Kind: Write, Run: cancelDocument},
+		{Name: "create_inventory_receipt", Kind: Write, Permissions: []string{"inventory.create", "inventory.post"}, Run: createInventoryReceipt},
 	}
 }
 

@@ -59,6 +59,12 @@ type Display struct {
 	Reference      string `json:"reference,omitempty"`
 	Description    string `json:"description,omitempty"`
 	Attachment     string `json:"attachment,omitempty"`
+	Product        string `json:"product,omitempty"`
+	ProductCode    string `json:"product_code,omitempty"`
+	Quantity       string `json:"quantity,omitempty"`
+	Unit           string `json:"unit,omitempty"`
+	UnitValue      string `json:"unit_value,omitempty"`
+	Warehouse      string `json:"warehouse,omitempty"`
 }
 
 type Flags struct {
@@ -79,21 +85,23 @@ type Choice struct {
 }
 
 type Proposal struct {
-	Action    string             `json:"action"`
-	EventType string             `json:"event_type"`
-	Tx        *tools.TxArgs      `json:"tx,omitempty"`
-	Expense   *tools.ExpenseArgs `json:"expense,omitempty"`
-	Invoice   *tools.InvoiceArgs `json:"invoice,omitempty"`
-	Display   Display            `json:"display"`
-	Preview   []EntryLine        `json:"preview"`
-	Question  *Question          `json:"question,omitempty"`
-	Flags     Flags              `json:"flags"`
-	Notes     []string           `json:"notes,omitempty"`
-	UsedRules []int64            `json:"used_rules,omitempty"`
-	Suggested map[string]Choice  `json:"suggested"`
-	Stop      string             `json:"stop,omitempty"` // cannot proceed; plain-language reason
-	Subject   string             `json:"subject,omitempty"`
-	PartyID   int64              `json:"party_id,omitempty"`
+	Action    string                      `json:"action"`
+	EventType string                      `json:"event_type"`
+	Tx        *tools.TxArgs               `json:"tx,omitempty"`
+	Expense   *tools.ExpenseArgs          `json:"expense,omitempty"`
+	Invoice   *tools.InvoiceArgs          `json:"invoice,omitempty"`
+	Inventory *tools.InventoryReceiptArgs `json:"inventory,omitempty"`
+	Inferred  []string                    `json:"inferred,omitempty"` // fields the assistant derived (shown, never asked)
+	Display   Display                     `json:"display"`
+	Preview   []EntryLine                 `json:"preview"`
+	Question  *Question                   `json:"question,omitempty"`
+	Flags     Flags                       `json:"flags"`
+	Notes     []string                    `json:"notes,omitempty"`
+	UsedRules []int64                     `json:"used_rules,omitempty"`
+	Suggested map[string]Choice           `json:"suggested"`
+	Stop      string                      `json:"stop,omitempty"` // cannot proceed; plain-language reason
+	Subject   string                      `json:"subject,omitempty"`
+	PartyID   int64                       `json:"party_id,omitempty"`
 }
 
 // Args returns the tool arguments of the proposal.
@@ -105,6 +113,8 @@ func (p *Proposal) Args() any {
 		return p.Expense
 	case p.Invoice != nil:
 		return p.Invoice
+	case p.Inventory != nil:
+		return p.Inventory
 	}
 	return nil
 }
@@ -124,6 +134,9 @@ type Context struct {
 	Scope       store.Scope
 	Answers     map[string]string
 	UploadName  string
+	Frame       *Frame // slot statuses (explicit "none" answers)
+	Products    []tools.Product
+	Warehouses  []tools.Warehouse
 }
 
 func (c *Context) tr(en, fa string) string {
@@ -186,6 +199,9 @@ func (r *resolver) answer(field string) (string, bool) {
 
 func (r *resolver) run(ctx context.Context) error {
 	switch r.ev.Type {
+	case EvInventoryIn:
+		r.p.Action = "create_inventory_receipt"
+		return r.inventory(ctx)
 	case EvExpense:
 		r.p.Action = "create_expense"
 	case EvLoanReceived, EvOwnerCapital, EvCustomerReceipt, EvCustomerAdvance:
@@ -1147,5 +1163,228 @@ func (r *resolver) invoice(ctx context.Context) error {
 	r.p.Display.Description = desc
 	r.p.Display.DocumentType = map[string]string{"create_invoice": r.c.tr("Sales invoice (draft)", "فاکتور فروش (پیش‌نویس)"), "create_purchase": r.c.tr("Purchase invoice (draft)", "فاکتور خرید (پیش‌نویس)")}[r.p.Action]
 	r.p.Notes = append(r.p.Notes, r.c.tr("Invoices are created as drafts; review the lines and tax, then post them in the app.", "فاکتورها به‌صورت پیش‌نویس ساخته می‌شوند؛ اقلام و مالیات را بررسی و سپس در برنامه قطعی کنید."))
+	return nil
+}
+
+// ---------- inventory: goods added to stock (e.g. manufactured by the company) ----------
+
+var invLabels = map[string][2]string{
+	"product_name": {"the product name", "نام کالا"},
+	"quantity":     {"how many units", "تعداد"},
+	"unit":         {"the unit (e.g. piece, kg)", "واحد (مثلاً عدد یا کیلوگرم)"},
+	"unit_value":   {"the value per unit", "ارزش هر واحد"},
+}
+
+func (r *resolver) has(field string) bool {
+	return r.c.Frame.Has(field)
+}
+
+func (r *resolver) inventory(ctx context.Context) error {
+	ev := r.ev
+	base := strings.ToUpper(r.c.Config.BaseCurrency)
+	if base == "" {
+		base = "IRR"
+	}
+	if ev.ManufacturedInternally != nil && !*ev.ManufacturedInternally {
+		r.p.Stop = r.c.tr("Goods bought from a supplier are registered with a purchase invoice (it updates stock and the supplier's balance). Tell me the supplier and I'll prepare the purchase invoice.",
+			"کالایی که از تأمین‌کننده خریده شده با فاکتور خرید ثبت می‌شود (موجودی و حساب تأمین‌کننده را به‌روز می‌کند). نام تأمین‌کننده را بگویید تا فاکتور خرید را آماده کنم.")
+		return nil
+	}
+	var missing []string
+	name := strings.TrimSpace(firstNonEmpty(ev.ProductName, ev.Subject))
+	if name == "" {
+		missing = append(missing, "product_name")
+	}
+	// existing product?
+	var product *tools.Product
+	if name != "" {
+		var hits []tools.Product
+		for _, p := range r.c.Products {
+			if p.IsActive && normalize.Text(p.Name) == normalize.Text(name) {
+				hits = append(hits, p)
+			}
+		}
+		if v, ok := r.answer("product"); ok {
+			for _, p := range hits {
+				if strconv.FormatInt(p.ID, 10) == v {
+					pp := p
+					product = &pp
+				}
+			}
+		}
+		if product == nil && len(hits) > 1 {
+			var opts []Option
+			for _, p := range hits {
+				opts = append(opts, Option{Value: strconv.FormatInt(p.ID, 10), Label: p.Name + " (" + p.SKU + ")"})
+			}
+			r.p.Flags.Ambiguous = true
+			return r.ask(Question{Field: "product", Text: r.c.tr("Several products have this name. Which one?", "چند کالا با این نام وجود دارد. کدام؟"), Options: opts})
+		}
+		if product == nil && len(hits) == 1 {
+			product = &hits[0]
+			r.p.Inferred = append(r.p.Inferred, "product")
+			r.p.Notes = append(r.p.Notes, r.c.tr("Using the existing product "+product.Name+".", "از کالای موجود «"+product.Name+"» استفاده می‌شود."))
+		}
+	}
+	qty, qerr := normalize.Amount(ev.Quantity)
+	if qerr != nil || !qty.IsPositive() {
+		if d, ok := normalize.WordsToNumber(ev.Quantity); ok && d.IsPositive() {
+			qty, qerr = d, nil
+		}
+	}
+	if qerr != nil || !qty.IsPositive() {
+		missing = append(missing, "quantity")
+	}
+	unit := strings.TrimSpace(ev.Unit)
+	if unit == "" && product != nil && product.Unit != "" {
+		unit = product.Unit
+		r.p.Inferred = append(r.p.Inferred, "unit")
+	}
+	if unit == "" && !r.c.Frame.IsNull("unit") {
+		missing = append(missing, "unit")
+	}
+	// value: per unit as stated, or a total divided by the quantity
+	cur := strings.ToUpper(ev.Currency)
+	toBase := func(d decimal.Decimal) decimal.Decimal {
+		switch {
+		case cur == "IRT" && base == "IRR":
+			return d.Mul(decimal.NewFromInt(10))
+		case cur == "IRR" && base == "IRT":
+			return d.Div(decimal.NewFromInt(10))
+		}
+		return d
+	}
+	var unitValue decimal.Decimal
+	if uv, err := normalize.Amount(ev.UnitValue); err == nil && uv.IsPositive() {
+		unitValue = toBase(uv)
+	} else if tv, err := normalize.Amount(ev.TotalValue); err == nil && tv.IsPositive() && qty.IsPositive() {
+		unitValue = toBase(tv).Div(qty)
+	} else if uv, ok := normalize.WordsToNumber(ev.UnitValue); ok && uv.IsPositive() {
+		unitValue = toBase(uv)
+	}
+	if !unitValue.IsPositive() {
+		missing = append(missing, "unit_value")
+	}
+	if cur != "" && cur != base && cur != "IRT" && cur != "IRR" {
+		r.p.Stop = r.c.tr("Please give the value in "+base+".", "لطفاً ارزش را به "+base+" بگویید.")
+		return nil
+	}
+	if len(missing) > 0 {
+		var parts []string
+		for _, m := range missing {
+			l := invLabels[m]
+			parts = append(parts, r.c.tr(l[0], l[1]))
+		}
+		text := r.c.tr("To add it to stock I still need: "+strings.Join(parts, ", ")+".", "برای افزودن به انبار فقط این موارد را لازم دارم: "+strings.Join(parts, "، ")+".")
+		// one question about ONLY the missing fields; the reply is merged into the operation
+		return r.ask(Question{ID: "details:" + strings.Join(missing, ","), Field: "details", FreeText: true, Text: text})
+	}
+	// warehouse: named, "default", or (not mentioned) the default warehouse — inferred, shown in the preview
+	var wh *tools.Warehouse
+	var actives []tools.Warehouse
+	for _, w := range r.c.Warehouses {
+		if w.IsActive {
+			actives = append(actives, w)
+		}
+	}
+	if v, ok := r.answer("warehouse"); ok {
+		for _, w := range actives {
+			if strconv.FormatInt(w.ID, 10) == v {
+				ww := w
+				wh = &ww
+			}
+		}
+	}
+	wn := normalize.Text(ev.Warehouse)
+	isDefault := wn == "" || wn == "default" || strings.Contains(wn, "پیش فرض") || strings.Contains(wn, "پیشفرض") || strings.Contains(wn, "اصلی") || strings.Contains(wn, "main")
+	if wh == nil && !isDefault {
+		for _, w := range actives {
+			if strings.Contains(normalize.Text(w.Name), wn) || normalize.Text(w.Code) == wn {
+				ww := w
+				wh = &ww
+				break
+			}
+		}
+	}
+	if wh == nil {
+		for _, w := range actives {
+			if w.IsDefault {
+				ww := w
+				wh = &ww
+			}
+		}
+		if wh == nil && len(actives) == 1 {
+			wh = &actives[0]
+		}
+		if wh != nil && ev.Warehouse == "" {
+			r.p.Inferred = append(r.p.Inferred, "warehouse")
+		}
+	}
+	if wh == nil {
+		if len(actives) == 0 {
+			r.p.Stop = r.c.tr("There is no active warehouse (or you can't see it).", "هیچ انبار فعالی وجود ندارد (یا مجوز دیدن آن را ندارید).")
+			return nil
+		}
+		var opts []Option
+		for _, w := range actives {
+			opts = append(opts, Option{Value: strconv.FormatInt(w.ID, 10), Label: w.Name})
+		}
+		return r.ask(Question{Field: "warehouse", Text: r.c.tr("Which warehouse?", "کدام انبار؟"), Options: opts})
+	}
+	// date
+	date := r.c.Today
+	if t, _, err := normalize.Date(ev.Date); err == nil {
+		date = t.Format("2006-01-02")
+	} else {
+		r.p.Inferred = append(r.p.Inferred, "date")
+	}
+	r.date = date
+	a := &tools.InventoryReceiptArgs{Date: date, WarehouseID: wh.ID, Quantity: qty.String(), UnitCost: unitValue.Round(4).String()}
+	if product != nil {
+		a.ProductID = &product.ID
+	} else {
+		code := strings.TrimSpace(normalize.Digits(ev.ProductCode))
+		if code == "" && !r.c.Frame.IsNull("product_code") {
+			r.p.Inferred = append(r.p.Inferred, "product_code")
+		}
+		a.NewProduct = &tools.NewProduct{Name: name, SKU: code, Unit: unit}
+	}
+	desc := r.c.tr("Production receipt: ", "رسید تولید: ") + name
+	if ev.ManufacturedInternally == nil {
+		desc = r.c.tr("Stock receipt: ", "رسید انبار: ") + name
+	}
+	a.Description = desc
+	r.p.Inventory = a
+	total := qty.Mul(unitValue).Round(int32(r.c.Config.AmountDecimals))
+	r.amount = total
+	r.p.Display = Display{DocumentType: r.c.tr("Stock receipt (goods produced by the company)", "رسید انبار (کالای تولید داخلی)"),
+		Product: name, Quantity: qty.String(), Unit: unit, UnitValue: unitValue.Round(int32(r.c.Config.AmountDecimals)).String(),
+		Amount: total.String(), Currency: base, Warehouse: wh.Name, Date: date, DateJalali: jal(date), Description: desc}
+	if product != nil {
+		r.p.Display.ProductCode = product.SKU // the existing product's own code
+	}
+	if product == nil {
+		switch {
+		case r.c.Frame.IsNull("product_code"):
+			r.p.Display.ProductCode = r.c.tr("none (numbered by the app)", "ندارد (شماره‌گذاری خودکار)")
+		case a.NewProduct.SKU != "":
+			r.p.Display.ProductCode = a.NewProduct.SKU
+		default:
+			r.p.Display.ProductCode = r.c.tr("numbered by the app", "شماره‌گذاری خودکار")
+		}
+		r.p.Notes = append(r.p.Notes, r.c.tr("A new product \""+name+"\" will be created (goods, stock tracked).", "کالای جدید «"+name+"» ساخته می‌شود (کالا، با کنترل موجودی)."))
+	}
+	if ev.ManufacturedInternally == nil {
+		r.p.Notes = append(r.p.Notes, r.c.tr("Recorded as goods added to stock (not a purchase).", "به‌عنوان ورود کالا به انبار ثبت می‌شود (نه خرید)."))
+	}
+	if contains(r.p.Inferred, "warehouse") {
+		r.p.Notes = append(r.p.Notes, r.c.tr("Warehouse: the default warehouse ("+wh.Name+").", "انبار: انبار پیش‌فرض («"+wh.Name+"»)."))
+	}
+	r.p.Preview = []EntryLine{
+		{Side: "debit", Account: r.c.tr("Inventory (posting rule)", "موجودی کالا (طبق قواعد ثبت)"), Amount: total.String()},
+		{Side: "credit", Account: r.c.tr("Inventory adjustment / production (posting rule)", "تعدیل موجودی / تولید (طبق قواعد ثبت)"), Amount: total.String()},
+	}
+	r.p.PartyID = 0
+	r.p.Subject = name
 	return nil
 }

@@ -25,7 +25,7 @@ const (
 // NeverAuto actions always need a human, whatever the switch says.
 var NeverAuto = map[string]bool{
 	"cancel_document": true, "create_journal_entry": true, "create_check": true, "payroll": true,
-	"create_invoice": true, "create_purchase": true,
+	"create_invoice": true, "create_purchase": true, "create_inventory_receipt": true,
 }
 
 // Facts are computed by the service (resolution, duplicate check, period check …).

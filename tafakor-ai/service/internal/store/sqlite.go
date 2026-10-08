@@ -47,6 +47,10 @@ var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS idempotency (
 		company_id INTEGER NOT NULL, user_id INTEGER NOT NULL, key TEXT NOT NULL, result TEXT NOT NULL, created_at TEXT NOT NULL,
 		PRIMARY KEY (company_id, user_id, key))`,
+	`CREATE TABLE IF NOT EXISTS conversations (
+		id TEXT PRIMARY KEY, company_id INTEGER NOT NULL, user_id INTEGER NOT NULL, version INTEGER NOT NULL,
+		state TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+	`CREATE INDEX IF NOT EXISTS conversations_user ON conversations (company_id, user_id, updated_at)`,
 	`CREATE TABLE IF NOT EXISTS cost_log (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, company_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
 		model TEXT NOT NULL, prompt_tokens INTEGER NOT NULL, completion_tokens INTEGER NOT NULL, cost_usd REAL NOT NULL,
@@ -412,4 +416,46 @@ func (s *SQLite) CountAutoToday(ctx context.Context, sc Scope, dayStart time.Tim
 	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM audit_log WHERE company_id = ? AND user_id = ? AND kind = 'auto_registered' AND created_at >= ?`,
 		sc.CompanyID, sc.UserID, dayStart.UTC().Format(ts)).Scan(&n)
 	return n, err
+}
+
+func (s *SQLite) GetConversation(ctx context.Context, sc Scope, id string) (Conversation, error) {
+	var c Conversation
+	var st, cr, up string
+	err := s.db.QueryRowContext(ctx, `SELECT id, company_id, user_id, version, state, created_at, updated_at FROM conversations
+		WHERE id = ? AND company_id = ? AND user_id = ?`, id, sc.CompanyID, sc.UserID).Scan(&c.ID, &c.CompanyID, &c.UserID, &c.Version, &st, &cr, &up)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c, ErrNotFound
+	}
+	c.State, c.CreatedAt, c.UpdatedAt = json.RawMessage(st), parseTime(cr), parseTime(up)
+	return c, err
+}
+
+// SaveConversation inserts (Version 0) or updates with optimistic locking: the row is
+// written only if its stored version still equals c.Version; on success c.Version is
+// incremented. A stale writer gets ErrConflict and never overwrites newer state.
+func (s *SQLite) SaveConversation(ctx context.Context, c *Conversation) error {
+	t := now()
+	if len(c.State) == 0 {
+		c.State = json.RawMessage("{}")
+	}
+	if c.Version == 0 {
+		_, err := s.db.ExecContext(ctx, `INSERT INTO conversations (id, company_id, user_id, version, state, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?, ?)`,
+			c.ID, c.CompanyID, c.UserID, string(c.State), t, t)
+		if err != nil {
+			return ErrConflict
+		}
+		c.Version, c.CreatedAt, c.UpdatedAt = 1, parseTime(t), parseTime(t)
+		return nil
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET state = ?, version = version + 1, updated_at = ?
+		WHERE id = ? AND company_id = ? AND user_id = ? AND version = ?`, string(c.State), t, c.ID, c.CompanyID, c.UserID, c.Version)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return ErrConflict
+	}
+	c.Version++
+	c.UpdatedAt = parseTime(t)
+	return nil
 }

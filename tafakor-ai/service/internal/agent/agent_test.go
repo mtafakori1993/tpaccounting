@@ -29,11 +29,13 @@ type fakeAcc struct {
 	txs         []map[string]any
 	expenses    []map[string]any
 	attachments map[string][]string
+	products    []map[string]any
+	stockDocs   []map[string]any
 	posts       int
 	srv         *httptest.Server
 }
 
-var adminPerms = []string{"parties.view", "cost_centers.view", "treasury.view", "treasury.create", "treasury.post", "treasury.cancel",
+var adminPerms = []string{"products.view", "products.create", "inventory.view", "inventory.create", "inventory.post", "parties.view", "cost_centers.view", "treasury.view", "treasury.create", "treasury.post", "treasury.cancel",
 	"expenses.view", "expenses.create", "expenses.post", "expenses.cancel", "accounts.view", "company.view", "sales.view", "settings.edit"}
 var viewerPerms = []string{"parties.view", "cost_centers.view", "treasury.view", "expenses.view", "accounts.view", "company.view"}
 
@@ -154,6 +156,70 @@ func newFakeAcc(t *testing.T) *fakeAcc {
 		}
 		w.WriteHeader(404)
 	})
+	mux.HandleFunc("GET /api/v1/products", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		q := strings.ToLower(r.URL.Query().Get("q"))
+		var out []map[string]any
+		for _, p := range f.products {
+			if q == "" || strings.Contains(strings.ToLower(p["name"].(string)), q) {
+				out = append(out, p)
+			}
+		}
+		js(w, map[string]any{"items": out})
+	})
+	mux.HandleFunc("POST /api/v1/products", func(w http.ResponseWriter, r *http.Request) {
+		if !perms(r)["products.create"] {
+			deny(w)
+			return
+		}
+		var in map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		in["id"] = 700 + len(f.products)
+		in["is_active"] = true
+		f.products = append(f.products, in)
+		w.WriteHeader(201)
+		js(w, in)
+	})
+	mux.HandleFunc("GET /api/v1/inventory/warehouses", func(w http.ResponseWriter, r *http.Request) {
+		js(w, []map[string]any{{"id": 3, "code": "W2", "name": "Branch", "is_active": true}, {"id": 1, "code": "W1", "name": "انبار مرکزی", "is_active": true, "is_default": true}})
+	})
+	mux.HandleFunc("POST /api/v1/inventory/documents", func(w http.ResponseWriter, r *http.Request) {
+		if !perms(r)["inventory.create"] {
+			deny(w)
+			return
+		}
+		var in map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.posts++
+		line := in["lines"].([]any)[0].(map[string]any)
+		name := ""
+		for _, p := range f.products {
+			if fmt.Sprint(p["id"]) == fmt.Sprint(line["product_id"]) {
+				name = p["name"].(string)
+			}
+		}
+		d := map[string]any{"id": 900 + len(f.stockDocs), "kind": in["kind"], "number": len(f.stockDocs) + 1, "date": in["date"], "warehouse_id": in["warehouse_id"],
+			"status": "posted", "lines": []any{map[string]any{"product_id": line["product_id"], "product_name": name, "quantity": line["quantity"], "unit_cost": line["unit_cost"]}}}
+		f.stockDocs = append(f.stockDocs, d)
+		w.WriteHeader(201)
+		js(w, d)
+	})
+	mux.HandleFunc("GET /api/v1/inventory/documents/{id}", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		for _, d := range f.stockDocs {
+			if fmt.Sprint(d["id"]) == r.PathValue("id") {
+				js(w, d)
+				return
+			}
+		}
+		w.WriteHeader(404)
+	})
 	mux.HandleFunc("GET /api/v1/expenses", func(w http.ResponseWriter, r *http.Request) { js(w, map[string]any{"items": f.expenses}) })
 	mux.HandleFunc("POST /api/v1/attachments", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseMultipartForm(1 << 20)
@@ -182,18 +248,29 @@ func newFakeAcc(t *testing.T) *fakeAcc {
 // ---------- scripted model (test only) ----------
 
 type scripted struct {
+	mu         sync.Mutex
 	extraction string
 	interp     string
+	queue      []string // per-turn interpretations (consumed in order; then interp)
+	prompts    []string // user prompts sent for interpretation (to inspect follow-up mode)
 	calls      int
 }
 
 func (s *scripted) Stream(ctx context.Context, req provider.Request, on func(string)) (provider.Result, error) {
+	s.mu.Lock()
 	s.calls++
 	sys := req.Messages[0].Content[0].Text
 	out := s.interp
-	if strings.Contains(sys, "You extract data") {
+	switch {
+	case strings.Contains(sys, "You extract data"):
 		out = s.extraction
+	case strings.Contains(sys, "classification step"):
+		s.prompts = append(s.prompts, req.Messages[len(req.Messages)-1].Content[0].Text)
+		if len(s.queue) > 0 {
+			out, s.queue = s.queue[0], s.queue[1:]
+		}
 	}
+	s.mu.Unlock()
 	if on != nil {
 		on(out)
 	}

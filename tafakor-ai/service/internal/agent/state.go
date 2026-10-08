@@ -57,29 +57,31 @@ type Result struct {
 }
 
 type State struct {
-	Stage       string                   `json:"stage"`
-	Lang        string                   `json:"lang"`
-	UserText    string                   `json:"user_text"`
-	Uploads     []Upload                 `json:"uploads,omitempty"`
-	Extractions []*extract.Extraction    `json:"extractions,omitempty"`
-	Interp      *classify.Interpretation `json:"interpretation,omitempty"`
-	Answers     map[string]string        `json:"answers,omitempty"`
-	Proposal    *classify.Proposal       `json:"proposal,omitempty"`
-	Decision    *policy.Decision         `json:"decision,omitempty"`
-	PayloadHash string                   `json:"payload_hash,omitempty"`
-	ArgsJSON    json.RawMessage          `json:"args,omitempty"`
-	Duplicates  json.RawMessage          `json:"duplicates,omitempty"`
-	Offers      []learning.Offer         `json:"offers,omitempty"`
-	Result      *Result                  `json:"result,omitempty"`
-	AskThisTime bool                     `json:"ask_this_time,omitempty"`
-	ExecMode    string                   `json:"exec_mode,omitempty"` // api | ui
-	Approved    bool                     `json:"approved,omitempty"`
-	ApprovedBy  int64                    `json:"approved_by,omitempty"`
-	Overrides   map[string]string        `json:"overrides,omitempty"` // description/reference edits
-	Message     string                   `json:"message,omitempty"`
-	UndoOf      string                   `json:"undo_of,omitempty"`
-	Target      *Target                  `json:"target,omitempty"`
-	Model       string                   `json:"model,omitempty"`
+	Stage          string                   `json:"stage"`
+	Lang           string                   `json:"lang"`
+	UserText       string                   `json:"user_text"`
+	Uploads        []Upload                 `json:"uploads,omitempty"`
+	Extractions    []*extract.Extraction    `json:"extractions,omitempty"`
+	Interp         *classify.Interpretation `json:"interpretation,omitempty"`
+	Answers        map[string]string        `json:"answers,omitempty"`
+	Proposal       *classify.Proposal       `json:"proposal,omitempty"`
+	Decision       *policy.Decision         `json:"decision,omitempty"`
+	PayloadHash    string                   `json:"payload_hash,omitempty"`
+	ArgsJSON       json.RawMessage          `json:"args,omitempty"`
+	Duplicates     json.RawMessage          `json:"duplicates,omitempty"`
+	Offers         []learning.Offer         `json:"offers,omitempty"`
+	Result         *Result                  `json:"result,omitempty"`
+	AskThisTime    bool                     `json:"ask_this_time,omitempty"`
+	ExecMode       string                   `json:"exec_mode,omitempty"` // api | ui
+	Approved       bool                     `json:"approved,omitempty"`
+	ApprovedBy     int64                    `json:"approved_by,omitempty"`
+	Overrides      map[string]string        `json:"overrides,omitempty"` // description/reference edits
+	Message        string                   `json:"message,omitempty"`
+	UndoOf         string                   `json:"undo_of,omitempty"`
+	Target         *Target                  `json:"target,omitempty"`
+	Frame          *classify.Frame          `json:"frame,omitempty"` // structured state of the operation (merged across turns)
+	ConversationID string                   `json:"conversation_id,omitempty"`
+	Model          string                   `json:"model,omitempty"`
 }
 
 // Target is an existing document a task acts on (undo, attach, pdf).
