@@ -44,7 +44,10 @@ export class Cursor {
     const r = el.getBoundingClientRect();
     this.highlight(r);
     if (text !== undefined) this.label.textContent = text;
-    await this.move(r.left + Math.min(24, r.width / 2), r.top + r.height / 2);
+    // aim at the start side of the control (right in RTL)
+    const rtl = getComputedStyle(el).direction === 'rtl';
+    const dx = Math.min(24, r.width / 2);
+    await this.move(rtl ? r.right - dx : r.left + dx, r.top + r.height / 2);
   }
 
   highlight(r: DOMRect) {

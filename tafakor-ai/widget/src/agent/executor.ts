@@ -56,7 +56,8 @@ function norm(s: string) {
 }
 
 function dialogScope(key?: string): ParentNode | null {
-  if (!key) return document;
+  // without a dialog, act inside the page content only (never the shell or menus)
+  if (!key) return document.querySelector('main [data-ai-page], main[data-ai-page]') ?? document.querySelector('main') ?? document;
   const tagged = document.querySelector(`[data-ai-dialog="${CSS.escape(key)}"]`);
   if (tagged) return tagged;
   const names = LABELS[key] ?? [];
@@ -85,11 +86,18 @@ function fieldControl(scope: ParentNode, key: string): HTMLElement | null {
   return null;
 }
 
+function isVisible(el: Element) {
+  const r = (el as HTMLElement).getBoundingClientRect();
+  return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+}
+
+/** Visible tagged control; real buttons win over links (a link may reload the page). */
 function actionControl(scope: ParentNode, key: string): HTMLElement | null {
-  const tagged = scope.querySelector<HTMLElement>(`[data-ai-action="${CSS.escape(key)}"]`);
-  if (tagged) return tagged;
+  const tagged = Array.from(scope.querySelectorAll<HTMLElement>(`[data-ai-action="${CSS.escape(key)}"]`)).filter(isVisible);
+  const best = tagged.find((e) => e.tagName === 'BUTTON') ?? tagged[0];
+  if (best) return best;
   const names = LABELS[key] ?? [];
-  return Array.from(scope.querySelectorAll<HTMLElement>('button, [role="button"], a')).find((b) => names.includes(norm(b.textContent ?? ''))) ?? null;
+  return Array.from(scope.querySelectorAll<HTMLElement>('button, [role="button"]')).find((b) => isVisible(b) && names.includes(norm(b.textContent ?? ''))) ?? null;
 }
 
 async function resolve(step: UIStep, kind: 'field' | 'action' | 'tab'): Promise<HTMLElement | null> {

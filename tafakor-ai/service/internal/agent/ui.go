@@ -146,6 +146,18 @@ func accountCode(p *classify.Proposal) string {
 // the real form (the app validates everything as for a human); afterwards the
 // server verifies the created document against the approved payload.
 func (a *Agent) startUI(ctx context.Context, u *User, t *store.Task, st *State, e Emitter) {
+	if reason := uiUnsupported(st.Proposal, st.Lang); reason != "" {
+		// The form cannot express this exact payload: register it directly and say so.
+		e.Emit("message", map[string]any{"text": reason})
+		a.audit(ctx, u, t.ID, "ui_skipped", map[string]any{"reason": reason})
+		st.ExecMode = "api"
+		mode := "human"
+		if st.Decision != nil && st.Decision.Mode == "auto" {
+			mode = "auto"
+		}
+		a.execute(ctx, u, t, st, &tools.Authorization{PayloadHash: tools.PayloadHash(st.Proposal.Action, st.ArgsJSON), Mode: mode, ApprovedBy: st.ApprovedBy, TaskID: t.ID}, e)
+		return
+	}
 	st.Stage = StageUIRunning
 	a.save(ctx, t, st)
 	plan := BuildUIPlan(st)
@@ -252,3 +264,19 @@ func (a *Agent) findCreated(ctx context.Context, u *User, t *store.Task, st *Sta
 }
 
 var _ = fmt.Sprint
+
+// uiUnsupported explains why the app's form cannot represent a payload exactly.
+func uiUnsupported(p *classify.Proposal, lang string) string {
+	switch {
+	case p.Tx != nil && p.Tx.CounterAccountID != nil && p.Tx.PartyID != nil:
+		return tr(lang, "The receipt form can't book a ledger account and a party on the same line, so I'm registering this directly (same approved details).",
+			"فرم دریافت نمی‌تواند حساب معین و طرف حساب را هم‌زمان ثبت کند؛ پس همین جزئیات تاییدشده را مستقیم ثبت می‌کنم.")
+	case p.Tx != nil && p.Tx.BudgetConfirm, p.Expense != nil && p.Expense.BudgetConfirm:
+		return tr(lang, "This posting needs a budget confirmation, so I'm registering it directly with your confirmation.",
+			"این ثبت نیاز به تایید بودجه دارد؛ پس با تایید شما مستقیم ثبت می‌کنم.")
+	case p.Expense != nil && p.Expense.PaymentMethod == "credit":
+		return tr(lang, "The expense form only lists suppliers for credit expenses, so I'm registering this directly.",
+			"فرم هزینه برای هزینه نسیه فقط تأمین‌کننده‌ها را نشان می‌دهد؛ پس مستقیم ثبت می‌کنم.")
+	}
+	return ""
+}

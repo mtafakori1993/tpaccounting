@@ -637,8 +637,18 @@ class Widget {
     session('lastTask', plan.task_id);
     const statusEl = h('div', { class: 'status' }, h('span', { class: 'spinner' }), '…');
     this.chatLog.append(statusEl);
-    const res = await runPlan(plan, this.cursor, (label) => statusEl.replaceChildren(h('span', { class: 'spinner' }), label), () => this.abortUI);
+    // get out of the way while operating the page; the cursor label shows progress
+    const wasOpen = !this.panel.hidden;
+    this.panel.hidden = true;
+    this.orb.classList.add('busy');
+    const stop = h('button', { class: 'btn danger', style: 'position:fixed;z-index:2147483004;bottom:84px;' + (lang() === 'fa' ? 'left' : 'right') + ':24px',
+      onclick: () => { this.abortUI = true; } }, t('cancel'));
+    this.root.append(stop);
+    this.abortUI = false;
+    const res = await runPlan(plan, this.cursor, (label) => { statusEl.replaceChildren(h('span', { class: 'spinner' }), label); this.cursor.label.textContent = label; }, () => this.abortUI);
+    stop.remove();
     statusEl.remove();
+    if (wasOpen) this.toggle(true);
     await this.run(`/tasks/${plan.task_id}/ui-result`, res);
   }
 

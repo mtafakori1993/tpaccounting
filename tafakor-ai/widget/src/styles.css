@@ -67,6 +67,7 @@ button { cursor: pointer; }
 }
 .head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--ai-brand-1); color: #e3eeec; cursor: grab; user-select: none; }
 .head .title { font-weight: 700; flex: 1; }
+.head > svg, .head button svg { width: 18px; height: 18px; flex: none; }
 .head button { background: transparent; border: none; color: inherit; padding: 4px; border-radius: 4px; display: grid; place-items: center; }
 .head button:hover { background: rgba(145, 218, 115, 0.14); }
 .modebar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--ai-border); background: var(--ai-sunken); font-size: 12px; }
