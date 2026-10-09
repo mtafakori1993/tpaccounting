@@ -290,6 +290,8 @@ type plannerCall struct {
 	// intended: for an update completed from the current record, the fields the model
 	// itself set (what the user asked to change).
 	intended []string
+	// notes: corrections made to the step by code (shown on the card).
+	notes []string
 }
 
 func (c plannerCall) args() tools.OpArgs {
@@ -523,6 +525,27 @@ func (a *Agent) runPlanner(ctx context.Context, u *User, t *store.Task, st *Stat
 					"answer it (action answer); otherwise propose a plan of ONLY the changes, using the actual ids and values from read_results " +
 					"(references like $s1.… only to earlier CHANGE steps). If a lookup depends on another lookup's result, use action read."
 				continue
+			}
+			// application rules the model gets wrong, applied by code (D67)
+			var aliasNotes []string
+			out.Steps, aliasNotes = dropPostingAliases(out.Steps)
+			if q, cn := completeChecks(p, out.Steps, a.today()); q != "" {
+				a.audit(ctx, u, t.ID, "check_date_question", map[string]any{"question": q})
+				p.Status, st.Stage = "waiting_for_input", StageQuestion
+				st.Proposal = &classify.Proposal{Question: &classify.Question{ID: fmt.Sprintf("plan:%d:checkdate", p.Rounds), Field: "details", FreeText: true, Text: q},
+					Suggested: map[string]classify.Choice{}}
+				a.save(ctx, t, st)
+				status(e, st.Lang, "question")
+				e.Emit("question", st.Proposal.Question)
+				e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
+				return
+			} else if len(cn)+len(aliasNotes) > 0 {
+				for i := range out.Steps {
+					if out.Steps[i].Tool == "checks.create" {
+						out.Steps[i].notes = append(append(out.Steps[i].notes, aliasNotes...), cn...)
+					}
+				}
+				a.audit(ctx, u, t.ID, "check_completed", map[string]any{"notes": append(aliasNotes, cn...)})
 			}
 			a.completeUpdates(ctx, u, st, out.Steps)
 			a.completeCheckBank(ctx, u, st, out.Steps)
@@ -880,7 +903,7 @@ func (a *Agent) validatePlan(u *User, p *PlanState, calls []plannerCall) ([]Plan
 		}
 		op, ok := catalog.Load().Get(c.Tool)
 		if !ok {
-			return nil, "unknown tool " + c.Tool
+			return nil, unknownToolFeedback(c.Tool)
 		}
 		if !op.Executable() {
 			return nil, fmt.Sprintf("%s is a session/credential operation (%s), not a business operation — the user is already signed in; explain that briefly (action answer)", c.Tool, op.Classification)
@@ -982,7 +1005,7 @@ func (a *Agent) validatePlan(u *User, p *PlanState, calls []plannerCall) ([]Plan
 			}
 		}
 		ids[c.ID] = true
-		out = append(out, PlanStep{ID: c.ID, Tool: c.Tool, Args: args, Purpose: strings.TrimSpace(c.Purpose), Status: "pending", Notes: notes, Intended: c.intended})
+		out = append(out, PlanStep{ID: c.ID, Tool: c.Tool, Args: args, Purpose: strings.TrimSpace(c.Purpose), Status: "pending", Notes: append(notes, c.notes...), Intended: c.intended})
 	}
 	return out, ""
 }
@@ -2161,4 +2184,36 @@ func readTotals(raw json.RawMessage) []decimal.Decimal {
 		}
 	}
 	return out
+}
+
+// unknownToolFeedback names the closest real operations (the planner invented
+// «checks.post»: posting a check is a field of checks.create, not an operation).
+func unknownToolFeedback(tool string) string {
+	type cand struct {
+		id string
+		d  int
+	}
+	var cs []cand
+	prefix := tool
+	if i := strings.Index(tool, "."); i > 0 {
+		prefix = tool[:i]
+	}
+	for _, c := range CapabilityMatrix() {
+		if c.Planner && strings.HasPrefix(c.Tool, prefix+".") && c.Kind != "read" {
+			cs = append(cs, cand{c.Tool, editDistance(tool, c.Tool)})
+		}
+	}
+	sort.Slice(cs, func(i, j int) bool { return cs[i].d < cs[j].d })
+	var names []string
+	for i := 0; i < len(cs) && i < 5; i++ {
+		names = append(names, cs[i].id)
+	}
+	msg := "unknown tool " + tool + " — it does not exist in the application; use only the listed tools"
+	if len(names) > 0 {
+		msg += " (" + prefix + " operations: " + strings.Join(names, ", ") + ")"
+	}
+	if strings.HasPrefix(tool, "checks.") {
+		msg += ". A check is registered with checks.create alone; issuing it now is the field issue:true of checks.create, later checks.transitions action=issue"
+	}
+	return msg
 }

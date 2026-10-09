@@ -19,7 +19,6 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -83,7 +82,6 @@ func skipNumber(op *catalog.Operation, key string) bool {
 	return moneyFields[key] // checkAmounts (D58), unit-aware
 }
 
-var dateRe = regexp.MustCompile(`(1[34][0-9]{2}|19[0-9]{2}|2[01][0-9]{2})[/\-.](\d{1,2})[/\-.](\d{1,2})`)
 
 // statedDates: the dates the user (or the document) gave, as Gregorian YYYY-MM-DD.
 func statedDates(st *State, p *PlanState, today string) map[string]bool {
@@ -95,14 +93,10 @@ func statedDates(st *State, p *PlanState, today string) map[string]bool {
 	}
 	for _, txt := range texts {
 		n := normalize.Text(normalize.Digits(txt))
-		for _, m := range dateRe.FindAllStringSubmatch(normalize.Digits(txt), -1) {
-			y, _ := strconv.Atoi(m[1])
-			mo, _ := strconv.Atoi(m[2])
-			d, _ := strconv.Atoi(m[3])
-			if y < 1500 {
-				y, mo, d = normalize.JalaliToGregorian(y, mo, d)
+		for _, d := range normalize.DatesIn(txt) {
+			if d.Valid {
+				out[d.Gregorian] = true
 			}
-			out[fmt.Sprintf("%04d-%02d-%02d", y, mo, d)] = true
 		}
 		for word, off := range map[string]int{"امروز": 0, "today": 0, "دیروز": -1, "yesterday": -1, "فردا": 1, "tomorrow": 1, "پریروز": -2} {
 			if strings.Contains(" "+n+" ", " "+word) {
@@ -354,22 +348,11 @@ func misspelledName(v string, p *PlanState) (string, string) {
 	return "", ""
 }
 
-// impossibleDate: a date the user wrote that no calendar has («۱۴۰۵/۱۳/۴۰»).
+// impossibleDate: a date the user wrote that no calendar has («۱۴۰۵/۱۳/۴۰», «۳۱ اسفند ۱۴۰۴»).
 func impossibleDate(text string) string {
-	for _, m := range dateRe.FindAllStringSubmatch(normalize.Digits(text), -1) {
-		y, _ := strconv.Atoi(m[1])
-		mo, _ := strconv.Atoi(m[2])
-		d, _ := strconv.Atoi(m[3])
-		maxDay := 31
-		if y < 1500 {
-			if mo >= 1 && mo <= 12 {
-				maxDay = normalize.JalaliMonthDays(y, mo)
-			}
-		} else if mo >= 1 && mo <= 12 {
-			maxDay = time.Date(y, time.Month(mo)+1, 0, 0, 0, 0, 0, time.UTC).Day()
-		}
-		if mo < 1 || mo > 12 || d < 1 || d > maxDay {
-			return m[0]
+	for _, d := range normalize.DatesIn(text) {
+		if !d.Valid {
+			return d.Raw
 		}
 	}
 	return ""

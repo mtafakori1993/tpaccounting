@@ -169,3 +169,24 @@ func TestMaskJSONKeepsAmountsAndValidity(t *testing.T) {
 		t.Fatalf("masking: %s", s)
 	}
 }
+
+func TestDatesIn(t *testing.T) {
+	ds := DatesIn("چک ... ثبت کن تاریخ ۱۲ آبان ۱۴۰۵ و سررسید 1405/09/15")
+	if len(ds) != 2 {
+		t.Fatalf("%+v", ds)
+	}
+	got := map[string]bool{}
+	for _, d := range ds {
+		got[d.Gregorian] = d.Valid
+	}
+	// Jalali 1405 is never Gregorian 1405
+	if !got["2026-11-03"] || !got["2026-12-06"] { // 1 Farvardin 1405 = 2026-03-21
+		t.Fatalf("conversion %+v", ds)
+	}
+	if d := DatesIn("۱۴۰۵/۱۳/۴۰"); len(d) != 1 || d[0].Valid {
+		t.Fatalf("invalid date accepted: %+v", d)
+	}
+	if d := DatesIn("۳۱ اسفند ۱۴۰۴"); len(d) != 1 || d[0].Valid {
+		t.Fatalf("Esfand 1404 has 29 days: %+v", d)
+	}
+}
