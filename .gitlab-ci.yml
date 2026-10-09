@@ -1,0 +1,92 @@
+# Pipeline: test -> build (image) -> deploy. Runs ONLY on the default branch (protected main).
+# Same runners/ServiceAccount model as tpsite/tpcall: the deploy job runs in a pod whose
+# ServiceAccount (ci/ci-deploy) can manage only the "tpaccounting" namespace. No secrets in this file.
+# VPN-only: the app is a ClusterIP service behind the GitLab nginx on 10.20.0.1 (no public ingress).
+
+stages: [test, build, deploy]
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+default:
+  interruptible: true
+
+variables:
+  IMAGE: $CI_REGISTRY_IMAGE
+  KUBE_IMAGE: alpine/k8s:1.36.4
+  BUILDKIT_IMAGE: moby/buildkit:v0.23.0-rootless
+  PROXY_URL: http://130.185.123.6:3128
+  NO_PROXY_LIST: gitlab.tafakorpardazan.ir,.tafakorpardazan.ir,localhost,127.0.0.1,10.0.0.0/8,.svc,.cluster.local
+
+test:go:
+  stage: test
+  tags: [build]
+  image: golang:1.26-alpine
+  variables:
+    CGO_ENABLED: "0"
+    HTTP_PROXY: $PROXY_URL
+    HTTPS_PROXY: $PROXY_URL
+    NO_PROXY: $NO_PROXY_LIST
+  script:
+    - cd backend
+    - go vet ./...
+    - go test ./...
+
+test:frontend:
+  stage: test
+  tags: [build]
+  image: node:22-alpine
+  variables:
+    HTTP_PROXY: $PROXY_URL
+    HTTPS_PROXY: $PROXY_URL
+    NO_PROXY: $NO_PROXY_LIST
+  script:
+    - cd frontend
+    - npm ci --no-audit --no-fund
+    - npm run build
+
+build:image:
+  stage: build
+  tags: [build]
+  image: {name: "$BUILDKIT_IMAGE", entrypoint: [""]}
+  variables:
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
+    DOCKER_CONFIG: /tmp/.docker
+  script:
+    - mkdir -p "$DOCKER_CONFIG"
+    - AUTH=$(printf 'gitlab-ci-token:%s' "$CI_JOB_TOKEN" | base64 | tr -d '\n')
+    - printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$AUTH" > "$DOCKER_CONFIG/config.json"
+    - >
+      buildctl-daemonless.sh build
+      --frontend dockerfile.v0 --local context=. --local dockerfile=.
+      --opt build-arg:HTTP_PROXY=$PROXY_URL --opt build-arg:HTTPS_PROXY=$PROXY_URL --opt build-arg:NO_PROXY=$NO_PROXY_LIST
+      --output type=image,name=$IMAGE:$CI_COMMIT_SHA,push=true
+    - >
+      buildctl-daemonless.sh build
+      --frontend dockerfile.v0 --local context=. --local dockerfile=.
+      --opt build-arg:HTTP_PROXY=$PROXY_URL --opt build-arg:HTTPS_PROXY=$PROXY_URL --opt build-arg:NO_PROXY=$NO_PROXY_LIST
+      --output type=image,name=$IMAGE:main,push=true
+
+deploy:production:
+  stage: deploy
+  tags: [deploy]
+  image: {name: "$KUBE_IMAGE", entrypoint: [""]}
+  resource_group: production
+  interruptible: false
+  environment: {name: production, url: https://accounting.tafakorpardazan.ir}
+  script:
+    - cd deploy/overlays/production
+    - 'sed -i "s|newTag:.*|newTag: $CI_COMMIT_SHA|" kustomization.yaml'
+    - kubectl kustomize . > /tmp/rendered.yaml
+    - 'grep -q "kind: Deployment" /tmp/rendered.yaml'
+    - kubectl apply -f /tmp/rendered.yaml
+    # Health check + automatic rollback to the previous revision if the new one never becomes ready.
+    - |
+      if ! kubectl -n tpaccounting rollout status deploy/app --timeout=300s; then
+        echo "Rollout failed - rolling back to the previous revision"
+        kubectl -n tpaccounting rollout undo deploy/app
+        kubectl -n tpaccounting rollout status deploy/app --timeout=180s || true
+        exit 1
+      fi
+    - kubectl -n tpaccounting get deploy,pods -l app=tpaccounting

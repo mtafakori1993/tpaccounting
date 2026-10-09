@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tpaccounting-config
+  namespace: tpaccounting
+  labels: {app: tpaccounting, managed-by: gitlab-ci}
+data:
+  APP_ENV: production
+  APP_PORT: "8085"
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: tpaccounting
+  DB_USER: tpaccounting
+  DB_SSLMODE: disable
+  SESSION_TTL_HOURS: "12"
+  COOKIE_SECURE: "true"
+  TRUST_PROXY: "true"
+  LOGIN_RATE_LIMIT_PER_MINUTE: "10"
+  MAX_UPLOAD_MB: "20"
+  STORAGE_DIR: /data/attachments
+  TZ: Asia/Tehran

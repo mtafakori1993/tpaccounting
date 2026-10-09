@@ -1,0 +1,68 @@
+# Nightly logical backup (pg_dump + attachments tar) kept 14 days on a PVC, like the GitLab backups.
+# NOTE: this is on the same server; copy /var/lib/rancher/k3s/storage/*tpaccounting*backups off-server.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-backups
+  namespace: tpaccounting
+  labels: {app: tpaccounting, managed-by: gitlab-ci}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 10Gi}}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+  namespace: tpaccounting
+  labels: {app: tpaccounting, component: backup, managed-by: gitlab-ci}
+spec:
+  schedule: "30 3 * * *"
+  timeZone: Asia/Tehran
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {app: tpaccounting, component: backup}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: backup
+              image: postgres:17-alpine
+              command: [sh, -ec]
+              args:
+                - |
+                  umask 077
+                  ts=$(date +%Y%m%d-%H%M%S)
+                  pg_dump -h postgres -U tpaccounting -d tpaccounting -Fc -f /backups/db-$ts.dump
+                  tar -C /data -czf /backups/attachments-$ts.tar.gz attachments
+                  find /backups -type f \( -name 'db-*.dump' -o -name 'attachments-*.tar.gz' \) -mtime +14 -delete
+                  ls -l /backups
+              env:
+                - name: PGPASSWORD
+                  valueFrom: {secretKeyRef: {name: tpaccounting-secrets, key: DB_PASSWORD}}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 500m, memory: 256Mi}
+              volumeMounts:
+                - {name: backups, mountPath: /backups}
+                - {name: attachments, mountPath: /data/attachments, readOnly: true}
+          volumes:
+            - name: backups
+              persistentVolumeClaim: {claimName: db-backups}
+            - name: attachments
+              persistentVolumeClaim: {claimName: attachments, readOnly: true}
