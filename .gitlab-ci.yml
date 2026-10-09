@@ -59,6 +59,9 @@ build:image:
     HTTP_PROXY: $PROXY_URL
     HTTPS_PROXY: $PROXY_URL
     NO_PROXY: $NO_PROXY_LIST
+    # proxy.golang.org answers 403 for the modernc.org modules on this network;
+    # goproxy.cn serves them (direct and through $PROXY_URL).
+    GOPROXY: https://goproxy.cn,direct
   script:
     - mkdir -p "$DOCKER_CONFIG"
     - AUTH=$(printf 'gitlab-ci-token:%s' "$CI_JOB_TOKEN" | base64 | tr -d '\n')
@@ -77,12 +80,12 @@ build:image:
     - >
       buildctl-daemonless.sh build
       --frontend dockerfile.v0 --local context=tafakor-ai --local dockerfile=tafakor-ai
-      --opt build-arg:HTTP_PROXY=$PROXY_URL --opt build-arg:HTTPS_PROXY=$PROXY_URL --opt build-arg:NO_PROXY=$NO_PROXY_LIST
+      --opt build-arg:HTTP_PROXY=$PROXY_URL --opt build-arg:HTTPS_PROXY=$PROXY_URL --opt build-arg:NO_PROXY=$NO_PROXY_LIST --opt build-arg:GOPROXY=$GOPROXY
       --output type=image,name=$IMAGE/tafakor-ai:$CI_COMMIT_SHA,push=true
     - >
       buildctl-daemonless.sh build
       --frontend dockerfile.v0 --local context=tafakor-ai --local dockerfile=tafakor-ai
-      --opt build-arg:HTTP_PROXY=$PROXY_URL --opt build-arg:HTTPS_PROXY=$PROXY_URL --opt build-arg:NO_PROXY=$NO_PROXY_LIST
+      --opt build-arg:HTTP_PROXY=$PROXY_URL --opt build-arg:HTTPS_PROXY=$PROXY_URL --opt build-arg:NO_PROXY=$NO_PROXY_LIST --opt build-arg:GOPROXY=$GOPROXY
       --output type=image,name=$IMAGE/tafakor-ai:main,push=true
 
 deploy:production:

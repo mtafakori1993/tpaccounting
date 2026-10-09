@@ -15,7 +15,7 @@ services:
       args:
         HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
         HTTPS_PROXY: ${BUILD_HTTP_PROXY:-}
-        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
     image: tafakor-ai:latest
     restart: unless-stopped
     environment:
