@@ -376,7 +376,33 @@ func orZero(s string) string {
 	return s
 }
 
-var attachEntities = map[string]bool{"treasury_transaction": true, "expense": true, "invoice": true, "journal_entry": true, "party": true}
+// AttachEntities: every record type the application's attachments API accepts
+// (backend attachments.entityTables).
+var AttachEntities = map[string]bool{"treasury_transaction": true, "expense": true, "invoice": true, "journal_entry": true, "party": true,
+	"stock_document": true, "check": true, "employee": true, "payroll_period": true, "budget": true}
+
+// typeExt: the extension the application expects for each document type it accepts.
+var typeExt = map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif", "application/pdf": ".pdf"}
+
+// AttachmentName is the name the original file is stored under in the application. The
+// app accepts a file only by its extension, so a pasted or camera image named "blob" or
+// "image" gets the extension of its real (sniffed) type.
+func AttachmentName(name string, content []byte) string {
+	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
+	ct := http.DetectContentType(content)
+	if i := strings.Index(ct, ";"); i > 0 {
+		ct = ct[:i]
+	}
+	want, known := typeExt[ct]
+	ext := strings.ToLower(filepath.Ext(name))
+	if !known || ext == want || (want == ".jpg" && ext == ".jpeg") {
+		return name
+	}
+	if name == "" || name == "." || name == "/" {
+		name = "document"
+	}
+	return name + want
+}
 
 type AttachArgs struct {
 	EntityType string `json:"entity_type"`
@@ -389,7 +415,7 @@ func attachDocument(ctx context.Context, env Env, args json.RawMessage) (any, er
 	if err := decodeStrict(args, &a); err != nil {
 		return nil, err
 	}
-	if !attachEntities[a.EntityType] || a.EntityID <= 0 || a.UploadID == "" {
+	if !AttachEntities[a.EntityType] || a.EntityID <= 0 || a.UploadID == "" {
 		return nil, fmt.Errorf("%w: entity and upload required", ErrInvalidInput)
 	}
 	if env.Files == nil || env.Me == nil {
@@ -400,7 +426,7 @@ func attachDocument(ctx context.Context, env Env, args json.RawMessage) (any, er
 		return nil, err
 	}
 	var out map[string]any
-	if err := env.Acc.Upload(ctx, env.Cred, a.EntityType, a.EntityID, filepath.Base(name), content, &out); err != nil {
+	if err := env.Acc.Upload(ctx, env.Cred, a.EntityType, a.EntityID, AttachmentName(name, content), content, &out); err != nil {
 		return nil, err
 	}
 	return out, nil

@@ -115,18 +115,38 @@ EVENT TYPES:
 - purchase / sales_invoice: an invoice for goods/services bought/sold. When the user explicitly asks for an invoice ("فاکتور خرید",
   "فاکتور فروش", "purchase invoice", "sales invoice") use purchase / sales_invoice — never expense.
 - transfer: money moved between the company's own cash/bank accounts.
+  Use transfer ONLY when the user names (or the conversation shows) the SOURCE account it came from.
+- "Add money to an account" with no source ("۱۰ میلیون به حساب بانک رفاه اضافه کن", "موجودی صندوق رو ۵ میلیون کن") is
+  AMBIGUOUS: it may be the account's opening balance, an owner's capital contribution, a receipt from a customer or person,
+  or a transfer from another of the company's accounts. Never guess, and never treat it as editing a displayed balance (a
+  balance only changes through an accounting record). Set intent "chat" and in "reply" ask which one it is, in the user's
+  language, listing those options (e.g. «موجودی اولیه حساب، آورده/سرمایه شریک، دریافت از شخص یا مشتری، یا انتقال از حساب
+  دیگر شرکت؟»). If the user's words already say which (موجودی اولیه / سرمایه / از علی گرفتیم / از صندوق), classify it directly.
 - inventory_receipt: goods are ADDED TO STOCK (e.g. a product manufactured by the company). Fill product_name, product_code,
   unit (e.g. "piece"/"عدد"), quantity, unit_value (value per unit as stated; if the user states a value for the product without saying
   "total", it is the unit value), total_value (only if explicitly a total), warehouse ("default" if they say default),
   manufactured_internally (true if made by the company). This is NOT a purchase or sales invoice.
 PAID_BY (for expenses/payments): company_card | bank | cash | personal (an employee/owner paid from their own pocket) | unknown.
+LANGUAGE: write subject, purpose, description and reply in the user interface language given below (fa → Persian, never English words
+like "payment", "purchase", "medicine"; en → English). Names, codes and words the user or the document wrote stay as written.
 Dates: copy exactly as given (Jalali like 1404/07/16 or Gregorian). Amounts: digits only, no separators; keep the currency the user/document states (IRR=ریال, IRT=تومان, USD...).
 
 INTENTS: register (one of the event types above) | operate (ANY other operation in the software, or several steps: create/edit
 customers, suppliers, products, warehouses, accounts; sales or purchase invoices and their posting; stock issues/transfers; journal entries;
 settling invoices; workflows like "create the counterparty and then record the payment") | query (questions about data: unpaid invoices, this month's expenses, balances, comparisons, stock levels) | navigate (open a screen/report) | attach (attach the uploaded file to an existing document) | pdf (generate a PDF of a document) | undo | chat (anything else; put a short helpful answer in "reply" in the user's language).
+DOMAIN FIRST: decide the business domain from the WHOLE sentence before the event — a single word («هزینه», «پرداخت», «حقوق»,
+«کمک هزینه», «حساب») never decides it. "register" is ONLY for money that moved or a cost/income that happened (accounting).
+Payroll configuration and employee compensation — adding/changing salary components («اجزای حقوق», «کمک هزینه سفر را به اجزای
+حقوق اضافه کن»), an employee's allowance amount («برای کارمند X کمک هزینه سفر ۳ میلیون ثبت کن»), salary structure, payroll settings —
+are intent operate, never an expense/payment, and never ask who paid. Creating/editing customers, suppliers, accounts or cash boxes is
+operate. «به خاطر بسپار / برای دفعات بعد» is a memory instruction, not an operation by itself.
 For query.kind use one of: unpaid_invoices, unpaid_bills, expenses, transactions, report, open_screen, party_balance, or "other" for any
 other question about the data (it is answered by reading the software). Dates as YYYY-MM-DD (Gregorian).
+REFERENCES: "این", "همین", "اون", "این سند", "همین فاکتور", suffixes like "رسیدش"/"چاپش"/"تبدیلش" and "this/that/it" refer to the
+ACTIVE document in <conversation_documents>. A request for a PDF, print, printable copy, file or "رسید" OF AN EXISTING document
+("رسید pdf این رو بده", "پرینتش کن", "PDF همین پیش‌فاکتور") is intent pdf — never a new registration and never a search. «رسید» alone
+does not mean a payment receipt: a "رسید" of a quotation/invoice is its printable copy. Converting, emailing, posting, editing, settling
+or cancelling the active document ("تبدیلش کن به فاکتور") is intent operate.
 
 EXPLICIT NONE: if the user says a field does not exist ("no code", "بدون کد", "doesn't have a code"), put that field name in
 "explicit_null" (e.g. ["product_code"]) — that is a complete answer, not missing information.
@@ -154,6 +174,9 @@ type InterpretInput struct {
 	Knowledge   string
 	Today       string
 	Lang        string
+	// Documents is the conversation's own document context (the active document first):
+	// what "این / همین / رسیدش / PDF این" refers to.
+	Documents string
 }
 
 func buildPrompt(in InterpretInput) string {
@@ -198,6 +221,10 @@ func buildPrompt(in InterpretInput) string {
 			fmt.Fprintf(&b, "%s: %s\n", t.Role, strings.ReplaceAll(t.Text, "</conversation_so_far>", ""))
 		}
 		b.WriteString("</conversation_so_far>\n")
+	}
+	if in.Documents != "" {
+		b.WriteString("<conversation_documents> (documents this conversation created or used; ACTIVE is what \"this\" refers to)\n" +
+			strings.ReplaceAll(in.Documents, "</conversation_documents>", "") + "</conversation_documents>\n")
 	}
 	if in.Frame != nil {
 		b.WriteString("<operation_in_progress>\n" + in.Frame.Summary() + "</operation_in_progress>\n")
@@ -251,6 +278,13 @@ func ParseInterpretation(text, userText string) (*Interpretation, error) {
 	}
 	if it.Intent == "register" && !validEvents[it.Event.Type] {
 		it.Event.Type = EvOther
+	}
+	// Consistency (audit 2026-10-08): "chat" together with an explicitly requested,
+	// complete event is a registration — the chat path can do nothing and answered
+	// "I'll register it" without registering anything.
+	if it.Intent == "chat" && it.UserRequestedRegistration && strings.TrimSpace(userText) != "" && validEvents[it.Event.Type] &&
+		it.Event.Type != EvOther && strings.TrimSpace(it.Event.Amount) != "" {
+		it.Intent, it.Reply = "register", ""
 	}
 	// Deterministic: no user words → no explicit request, whatever the model says.
 	if strings.TrimSpace(userText) == "" {
@@ -344,4 +378,37 @@ func DetectExecutionIntent(userText string) (direct, preview bool) {
 		direct = false
 	}
 	return direct, preview
+}
+
+// confirmPhrases confirm an operation the user has already reviewed (an open preview).
+var confirmPhrases = []string{
+	"تایید و ثبت", "تأیید و ثبت", "تایید", "تأیید", "ثبت کن", "ثبتش کن", "ثبت شود", "ثبت بشه", "ذخیره کن", "ذخیره‌اش کن", "اوکی", "باشه ثبت",
+	"confirm", "register it", "save it", "go ahead", "yes register", "submit it",
+}
+
+// negations turn a confirmation phrase into a refusal ("ثبت نکن", "تایید نمی‌کنم", "don't").
+var negations = []string{"نکن", "نمیکنم", "نمی‌کنم", "نه ", "لغو", "cancel", "don't", "dont", "do not", "not "}
+
+// DetectConfirm reports whether a short message only confirms the operation the user
+// has already reviewed. A message with numbers or more than a few words carries new
+// information and is treated as an edit, never as a confirmation.
+func DetectConfirm(userText string) bool {
+	t := " " + normalize.Text(userText) + " "
+	if len(strings.Fields(t)) > 6 || strings.ContainsAny(normalize.Digits(userText), "0123456789") {
+		return false
+	}
+	for _, n := range negations {
+		if strings.Contains(t, normalize.Text(n)) {
+			return false
+		}
+	}
+	if d, _ := DetectExecutionIntent(userText); d {
+		return true
+	}
+	for _, p := range confirmPhrases {
+		if strings.Contains(t, normalize.Text(p)) {
+			return true
+		}
+	}
+	return false
 }

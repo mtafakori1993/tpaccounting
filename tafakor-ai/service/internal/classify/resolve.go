@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/tafakorpardazan/tafakor-ai/internal/textlang"
 	"sort"
 	"strconv"
 	"strings"
@@ -399,13 +400,16 @@ func (r *resolver) reference() string {
 
 func (r *resolver) description() string {
 	parts := []string{}
-	for _, s := range []string{r.ev.Description, r.ev.Purpose} {
+	for _, s := range []string{r.local(r.ev.Description), r.local(r.ev.Purpose)} {
 		if s != "" && !contains(parts, s) {
 			parts = append(parts, s)
 		}
 	}
-	if len(parts) == 0 && r.ev.Subject != "" {
-		parts = append(parts, r.ev.Subject)
+	if subj := r.local(r.ev.Subject); len(parts) == 0 && subj != "" {
+		parts = append(parts, subj)
+	}
+	if len(parts) == 0 && (r.ev.Description != "" || r.ev.Purpose != "" || r.ev.Subject != "") {
+		parts = append(parts, r.p.Display.DocumentType) // the model's text was in the wrong language
 	}
 	d := strings.Join(parts, " — ")
 	if r.p.Display.OriginalAmount != "" {
@@ -417,6 +421,28 @@ func (r *resolver) description() string {
 	}
 	r.p.Display.Description = d
 	return d
+}
+
+// local keeps text the model composed in the interface language (D45): invented
+// English words in a Persian interface are translated when known; text that still has
+// invented foreign words is dropped. The user's and the document's own words stay.
+func (r *resolver) local(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	src := []string{r.c.UserText}
+	if r.c.Frame != nil {
+		src = append(src, r.c.Frame.UserText())
+	}
+	for _, x := range r.c.Extractions {
+		src = append(src, x.Summary())
+	}
+	out, left := textlang.Localize(text, r.c.Lang, src...)
+	if len(left) > 0 {
+		return ""
+	}
+	return out
 }
 
 func contains(xs []string, s string) bool {
@@ -528,6 +554,14 @@ func (r *resolver) party(field, name, role string, required bool) (*tools.Party,
 		}
 	}
 	if len(hits) == 1 && hits[0].exact {
+		pp := hits[0].p
+		r.p.Suggested[field] = Choice{pp.ID, pp.Name}
+		return &pp, nil
+	}
+	// The user wrote the party's full registered name; the model shortened it
+	// («داده پردازان سپهر» for «شرکت داده‌پردازان سپهر»). Their own words decide: no
+	// "did you mean" question for a name they typed exactly.
+	if len(hits) == 1 && r.c.UserText != "" && strings.Contains(" "+normalize.Text(r.c.UserText)+" ", " "+normalize.Text(hits[0].p.Name)+" ") {
 		pp := hits[0].p
 		r.p.Suggested[field] = Choice{pp.ID, pp.Name}
 		return &pp, nil
@@ -1115,6 +1149,24 @@ func (r *resolver) expense(ctx context.Context) error {
 		return r.ask(Question{Field: "paid_by", Text: r.c.tr("Who paid for this?", "این هزینه را چه کسی پرداخت کرد؟"), Options: opts, Remember: true, RuleKind: learning.PaymentDefault, Key: "paid_by"})
 	}
 	r.p.Display.PaymentMethod = a.PaymentMethod
+	// The payee the user named («به ایرانیکارت پرداخت کردیم») is resolved like any other
+	// party: one registered match is linked to the expense, several are asked — never
+	// dropped or guessed (A5: two suppliers named «ایرانیکارت», neither was asked).
+	// An unregistered vendor name asks nothing.
+	if name := strings.TrimSpace(ev.Counterparty); name != "" && a.PartyID == nil {
+		_, answered := r.answer("payee")
+		if answered || len(r.findParties(name)) > 0 {
+			p, err := r.party("payee", name, ev.CounterpartyRole, false)
+			if err != nil {
+				return err
+			}
+			if p != nil {
+				a.PartyID = &p.ID
+				r.p.Display.Party = p.Name
+				r.p.PartyID = p.ID
+			}
+		}
+	}
 	proj, err := r.project()
 	if err != nil {
 		return err
@@ -1156,7 +1208,7 @@ func (r *resolver) invoice(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	desc := firstNonEmpty(r.ev.Subject, r.ev.Description, r.ev.Purpose, r.c.tr("Services", "خدمات"))
+	desc := firstNonEmpty(r.local(r.ev.Subject), r.local(r.ev.Description), r.local(r.ev.Purpose), r.c.tr("Services", "خدمات"))
 	a := &tools.InvoiceArgs{Date: r.date, PartyID: party.ID, Reference: r.reference(),
 		Items: []tools.InvoiceItem{{Description: desc, Quantity: "1", UnitPrice: r.amount.String(), TaxRate: "0"}}}
 	if proj != nil {

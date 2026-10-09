@@ -93,3 +93,34 @@ func TestSecondReadingDisagreementFlagsAmount(t *testing.T) {
 		t.Fatal("agreeing readings must stay confident")
 	}
 }
+
+// Audit 2026-10-08: invoices are read with their lines and totals, and the printed
+// arithmetic is checked so a misread number (stamp over the total) is flagged.
+func TestInvoiceStructureAndArithmetic(t *testing.T) {
+	good := `{"document_kind":"invoice","amount":{"value":"۱۲۶٬۵۰۰٬۰۰۰","confidence":0.9},"invoice":{"number":"ف-۸۸۲۰",
+	 "lines":[{"description":"کاغذ A4","quantity":"20","unit_price":"1,850,000","amount":"37,000,000"},
+	          {"description":"تونر","quantity":"3","unit_price":"14,200,000","amount":"42,600,000"},
+	          {"description":"سایر","quantity":"1","unit_price":"40,400,000","amount":"40,400,000"}],
+	 "subtotal":"120,000,000","discount":"5,000,000","tax":"11,500,000","tax_rate":"10%","total":"126,500,000"}}`
+	x, err := Parse(good)
+	if err != nil || x.Invoice == nil || !x.Invoice.Consistent || len(x.Invoice.Lines) != 3 || x.Invoice.Lines[0].UnitPrice != "1850000" || x.Invoice.TaxRate != "10" {
+		t.Fatalf("%v %+v", err, x.Invoice)
+	}
+	if contains(x.LowFields, "amount") {
+		t.Fatal("a consistent invoice is not low-confidence")
+	}
+	// the stamp made the total read as 18,365,000 instead of 18,865,000
+	bad := `{"document_kind":"invoice","amount":{"value":"18365000","confidence":0.9},"invoice":{
+	 "lines":[{"description":"پشتیبانی","quantity":"1","unit_price":"17150000","amount":"17150000"}],
+	 "subtotal":"17150000","tax":"1715000","tax_rate":"10","total":"18365000"}}`
+	x, _ = Parse(bad)
+	if x.Invoice.Consistent || !contains(x.LowFields, "amount") {
+		t.Fatalf("misread total must be flagged: %+v", x.Invoice)
+	}
+}
+
+func TestFallbackPromptOmitsInvoiceBlock(t *testing.T) {
+	if systemPromptNoLines == systemPrompt || strings.Contains(systemPromptNoLines, `"invoice":{"number"`) {
+		t.Fatal("fallback prompt must omit the invoice block")
+	}
+}

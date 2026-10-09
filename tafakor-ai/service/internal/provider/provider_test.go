@@ -193,7 +193,7 @@ func TestCreditInFlight402IsRetriedThenSucceeds(t *testing.T) {
 	}))
 	defer up2.Close()
 	o2, _ := NewOpenRouter(up2.URL, "k", "m", "", nil, 5*time.Second)
-	if _, err := o2.Complete(context.Background(), Request{}); !errors.Is(err, ErrRejected) || m.Load() != 1 {
+	if _, err := o2.Complete(context.Background(), Request{}); !errors.Is(err, ErrNoCredit) || m.Load() != 1 {
 		t.Fatalf("plain 402 must not be retried: %v %d", err, m.Load())
 	}
 }
@@ -213,5 +213,43 @@ func TestFallbackModelsAreSentToOpenRouter(t *testing.T) {
 	}
 	if !strings.Contains(got, `"models":["google/gemini-2.5-flash-lite","google/gemini-2.0-flash-001"]`) {
 		t.Fatalf("fallbacks missing or duplicated: %s", got)
+	}
+}
+
+// Audit 2026-10-08: OpenRouter answers 403 "Key limit exceeded" when the key's
+// spending limit is used up; users were told "the AI service is unavailable".
+func TestKeyLimitIsReportedAsNoCredit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		_, _ = w.Write([]byte(`{"error":{"message":"Key limit exceeded (total limit).","code":403}}`))
+	}))
+	defer srv.Close()
+	o, err := NewOpenRouter(srv.URL, "k", "m", "", nil, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = o.Complete(context.Background(), Request{Messages: []Message{Text("user", "hi")}})
+	if !errors.Is(err, ErrNoCredit) || !strings.Contains(PlainMessage(err), "credit") {
+		t.Fatalf("got %v / %s", err, PlainMessage(err))
+	}
+}
+
+// Live finding (K1): "temporarily rate-limited upstream" was reported as unavailable
+// and not retried.
+func TestUpstreamRateLimitIsRetried(t *testing.T) {
+	var n atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if n.Add(1) == 1 {
+			w.WriteHeader(502)
+			_, _ = w.Write([]byte(`{"error":{"message":"google/gemini-2.5-flash-lite is temporarily rate-limited upstream. Please retry shortly"}}`))
+			return
+		}
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`+"\n\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+	o, _ := NewOpenRouter(srv.URL, "k", "m", "", nil, 10*time.Second)
+	res, err := o.Complete(context.Background(), Request{})
+	if err != nil || res.Text != "ok" || n.Load() != 2 {
+		t.Fatalf("%v %q %d", err, res.Text, n.Load())
 	}
 }

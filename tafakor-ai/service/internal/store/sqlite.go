@@ -296,6 +296,29 @@ func (s *SQLite) ListAudit(ctx context.Context, sc Scope, taskID string, limit i
 	return out, rows.Err()
 }
 
+func (s *SQLite) ListAuditKind(ctx context.Context, sc Scope, kind string, limit int) ([]AuditEntry, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 1000
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, company_id, user_id, task_id, kind, data, created_at FROM audit_log
+		WHERE company_id = ? AND user_id = ? AND kind = ? ORDER BY id DESC LIMIT ?`, sc.CompanyID, sc.UserID, kind, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AuditEntry{}
+	for rows.Next() {
+		var e AuditEntry
+		var d, c string
+		if err := rows.Scan(&e.ID, &e.CompanyID, &e.UserID, &e.TaskID, &e.Kind, &d, &c); err != nil {
+			return nil, err
+		}
+		e.Data, e.CreatedAt = json.RawMessage(d), parseTime(c)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 func (s *SQLite) PurgeAudit(ctx context.Context, before time.Time) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM audit_log WHERE created_at < ?`, before.UTC().Format(ts))
 	if err != nil {

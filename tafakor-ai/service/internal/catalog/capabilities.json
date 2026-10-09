@@ -17,8 +17,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/accounts/ChartPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/accounts/ChartPage.tsx"
       ]
     },
     {
@@ -37,8 +36,7 @@
       "risk": "high",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/accounts/ChartPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/accounts/ChartPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
@@ -60,8 +58,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/accounts/ChartPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/accounts/ChartPage.tsx"
       ]
     },
     {
@@ -113,8 +110,7 @@
       "risk": "medium",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/accounts/ChartPage.tsx",
-        "features/invoices/InvoiceFormPage.tsx"
+        "features/accounts/ChartPage.tsx"
       ]
     },
     {
@@ -189,7 +185,46 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/accounts/ChartPage.tsx"
-      ]
+      ],
+      "ui": {
+        "route": "/accounts",
+        "open": [
+          {
+            "tag": "accounts.newAccount"
+          }
+        ],
+        "dialogs": [
+          "accounts.newChild",
+          "accounts.newAccount"
+        ],
+        "fields": {
+          "code": {
+            "tag": "common.code",
+            "control": "fill"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          },
+          "type": {
+            "tag": "common.type",
+            "control": "select"
+          }
+        },
+        "missing": [
+          "is_active",
+          "parent_id"
+        ],
+        "file": "features/accounts/ChartPage.tsx"
+      }
     },
     {
       "id": "attachments.download",
@@ -207,7 +242,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "components/Attachments.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -228,8 +263,7 @@
       "risk": "high",
       "ui_exists": true,
       "ui_entry_points": [
-        "components/Attachments.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "components/Attachments.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic",
@@ -403,8 +437,7 @@
       "ui_entry_points": [
         "auth/AuthProvider.tsx",
         "features/auth/LoginPage.tsx",
-        "features/auth/SetupPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/auth/SetupPage.tsx"
       ]
     },
     {
@@ -438,7 +471,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "layout/AppShell.tsx"
       ]
     },
@@ -506,10 +538,7 @@
       "action": "events",
       "classification": "READ_ONLY",
       "risk": "low",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ]
+      "ui_exists": false
     },
     {
       "id": "budgets.control.rules.delete",
@@ -623,7 +652,53 @@
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "ui": {
+        "route": "/budgets/control",
+        "row": true,
+        "dialogs": [
+          "budgets.control.editRule"
+        ],
+        "fields": {
+          "account_id": {
+            "tag": "budgets.account",
+            "control": "combo"
+          },
+          "basis": {
+            "tag": "budgets.control.basis",
+            "control": "select"
+          },
+          "budget_id": {
+            "tag": "budgets.title",
+            "control": "select"
+          },
+          "cost_center_id": {
+            "tag": "budgets.costCenter",
+            "control": "select"
+          },
+          "is_active": {
+            "tag": "common.isActive",
+            "control": "check"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "policy": {
+            "tag": "budgets.control.policy",
+            "control": "select"
+          },
+          "role_id": {
+            "tag": "budgets.control.role",
+            "control": "select"
+          },
+          "threshold_percent": {
+            "tag": "budgets.control.threshold",
+            "control": "fill"
+          }
+        },
+        "file": "features/budgets/BudgetControlPage.tsx"
+      }
     },
     {
       "id": "budgets.control.rules.list",
@@ -636,10 +711,7 @@
       "action": "listRules",
       "classification": "READ_ONLY",
       "risk": "low",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ]
+      "ui_exists": false
     },
     {
       "id": "budgets.control.rules.create",
@@ -728,7 +800,56 @@
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "ui": {
+        "route": "/budgets/control",
+        "open": [
+          {
+            "tag": "budgets.control.newRule"
+          }
+        ],
+        "dialogs": [
+          "budgets.control.newRule"
+        ],
+        "fields": {
+          "account_id": {
+            "tag": "budgets.account",
+            "control": "combo"
+          },
+          "basis": {
+            "tag": "budgets.control.basis",
+            "control": "select"
+          },
+          "budget_id": {
+            "tag": "budgets.title",
+            "control": "select"
+          },
+          "cost_center_id": {
+            "tag": "budgets.costCenter",
+            "control": "select"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "policy": {
+            "tag": "budgets.control.policy",
+            "control": "select"
+          },
+          "role_id": {
+            "tag": "budgets.control.role",
+            "control": "select"
+          },
+          "threshold_percent": {
+            "tag": "budgets.control.threshold",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "is_active"
+        ],
+        "file": "features/budgets/BudgetControlPage.tsx"
+      }
     },
     {
       "id": "budgets.control.list",
@@ -745,8 +866,7 @@
       "ui_entry_points": [
         "features/budgets/BudgetControlPage.tsx",
         "features/budgets/BudgetFormPage.tsx",
-        "features/budgets/BudgetViewPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/budgets/BudgetViewPage.tsx"
       ]
     },
     {
@@ -776,8 +896,7 @@
       "ui_entry_points": [
         "features/budgets/BudgetDashboardPage.tsx",
         "features/budgets/BudgetFormPage.tsx",
-        "features/budgets/BudgetViewPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/budgets/BudgetViewPage.tsx"
       ]
     },
     {
@@ -800,8 +919,7 @@
       "ui_entry_points": [
         "features/budgets/BudgetFormPage.tsx",
         "features/budgets/BudgetViewPage.tsx",
-        "features/budgets/common.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/budgets/common.tsx"
       ]
     },
     {
@@ -886,8 +1004,7 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/budgets/BudgetReportPage.tsx",
-        "features/budgets/BudgetViewPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/budgets/BudgetViewPage.tsx"
       ]
     },
     {
@@ -941,8 +1058,7 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/budgets/BudgetReportPage.tsx",
-        "features/budgets/BudgetViewPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/budgets/BudgetViewPage.tsx"
       ]
     },
     {
@@ -1094,8 +1210,7 @@
       "risk": "high",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/budgets/BudgetViewPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/budgets/BudgetViewPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
@@ -1121,8 +1236,7 @@
         "features/budgets/BudgetDashboardPage.tsx",
         "features/budgets/BudgetFormPage.tsx",
         "features/budgets/BudgetViewPage.tsx",
-        "features/budgets/common.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/budgets/common.tsx"
       ]
     },
     {
@@ -1205,9 +1319,41 @@
       "risk": "medium",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/budgets/BudgetFormPage.tsx",
-        "features/invoices/InvoiceFormPage.tsx"
-      ]
+        "features/budgets/BudgetFormPage.tsx"
+      ],
+      "ui": {
+        "route": "/budgets/:id/edit",
+        "fields": {
+          "code": {
+            "tag": "budgets.code",
+            "control": "fill"
+          },
+          "cost_center_id": {
+            "tag": "budgets.owner",
+            "control": "select"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "fiscal_year_id": {
+            "tag": "budgets.fiscalYear",
+            "control": "select"
+          },
+          "name": {
+            "tag": "budgets.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "lines"
+        ],
+        "file": "features/budgets/BudgetFormPage.tsx"
+      }
     },
     {
       "id": "budgets.list",
@@ -1310,7 +1456,40 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/budgets/BudgetFormPage.tsx"
-      ]
+      ],
+      "ui": {
+        "route": "/budgets/new",
+        "fields": {
+          "code": {
+            "tag": "budgets.code",
+            "control": "fill"
+          },
+          "cost_center_id": {
+            "tag": "budgets.owner",
+            "control": "select"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "fiscal_year_id": {
+            "tag": "budgets.fiscalYear",
+            "control": "select"
+          },
+          "name": {
+            "tag": "budgets.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "lines"
+        ],
+        "file": "features/budgets/BudgetFormPage.tsx"
+      }
     },
     {
       "id": "checks.banks.list",
@@ -1326,8 +1505,7 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/checks/CheckDetailPage.tsx",
-        "features/checks/common.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/common.tsx"
       ]
     },
     {
@@ -1344,8 +1522,7 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/checks/CheckDetailPage.tsx",
-        "features/checks/ChecksDashboardPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/ChecksDashboardPage.tsx"
       ]
     },
     {
@@ -1384,8 +1561,7 @@
         "features/checks/CheckDetailPage.tsx",
         "features/checks/CheckReportPage.tsx",
         "features/checks/ChecksCalendarPage.tsx",
-        "features/checks/ChecksListPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/ChecksListPage.tsx"
       ]
     },
     {
@@ -1412,8 +1588,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/checks/CheckReportPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/CheckReportPage.tsx"
       ]
     },
     {
@@ -1440,8 +1615,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/checks/CheckReportPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/CheckReportPage.tsx"
       ]
     },
     {
@@ -1468,8 +1642,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/checks/CheckReportPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/CheckReportPage.tsx"
       ]
     },
     {
@@ -1496,8 +1669,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/checks/CheckReportPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/CheckReportPage.tsx"
       ]
     },
     {
@@ -1519,8 +1691,7 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/checks/CheckReportPage.tsx",
-        "features/checks/ChecksDashboardPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/ChecksDashboardPage.tsx"
       ]
     },
     {
@@ -1557,8 +1728,7 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/checks/CheckReportPage.tsx",
-        "features/checks/ChecksDashboardPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/ChecksDashboardPage.tsx"
       ]
     },
     {
@@ -1594,8 +1764,7 @@
       "ui_entry_points": [
         "features/checks/CheckDetailPage.tsx",
         "features/checks/CheckReportPage.tsx",
-        "features/checks/ChecksListPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/ChecksListPage.tsx"
       ]
     },
     {
@@ -1614,8 +1783,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/checks/CheckReportPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/CheckReportPage.tsx"
       ]
     },
     {
@@ -1642,13 +1810,11 @@
         },
         {
           "name": "treasury_account_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "party_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "counter_account_id",
@@ -1660,8 +1826,7 @@
         },
         {
           "name": "reason",
-          "type": "string",
-          "required": true
+          "type": "string"
         },
         {
           "name": "allocations",
@@ -1693,7 +1858,9 @@
       ],
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "checks.delete",
@@ -1709,18 +1876,17 @@
       "action": "delete",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "accounting_impact": "check status transitions post their own entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/checks/CheckDetailPage.tsx",
         "features/checks/CheckReportPage.tsx",
         "features/checks/ChecksCalendarPage.tsx",
-        "features/checks/ChecksListPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/ChecksListPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "financial_document": true
     },
     {
       "id": "checks.get",
@@ -1743,8 +1909,7 @@
         "features/checks/ChecksCalendarPage.tsx",
         "features/checks/ChecksDashboardPage.tsx",
         "features/checks/ChecksListPage.tsx",
-        "features/checks/common.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/checks/common.tsx"
       ]
     },
     {
@@ -1778,8 +1943,7 @@
         },
         {
           "name": "bank_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "bank_name",
@@ -1822,13 +1986,11 @@
         },
         {
           "name": "received_date",
-          "type": "*civil.Date",
-          "required": true
+          "type": "*civil.Date"
         },
         {
           "name": "treasury_account_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "invoice_id",
@@ -1877,15 +2039,110 @@
       "action": "update",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
-      "accounting_impact": "check status transitions post their own entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/checks/CheckReportPage.tsx",
         "features/checks/ChecksCalendarPage.tsx",
         "features/checks/ChecksListPage.tsx",
-        "features/checks/common.tsx",
-        "features/invoices/InvoiceFormPage.tsx"
-      ]
+        "features/checks/common.tsx"
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/checks/:id",
+        "open": [
+          {
+            "tag": "common.edit"
+          }
+        ],
+        "dialogs": [
+          "checks.editCheck"
+        ],
+        "fields": {
+          "account_holder": {
+            "tag": "checks.accountHolder",
+            "control": "fill"
+          },
+          "account_number": {
+            "tag": "checks.accountNumber",
+            "control": "fill"
+          },
+          "amount": {
+            "tag": "checks.amount",
+            "control": "fill"
+          },
+          "auto_allocate": {
+            "tag": "checks.autoAllocate",
+            "control": "check"
+          },
+          "bank_id": {
+            "tag": "checks.bank",
+            "control": "select"
+          },
+          "branch": {
+            "tag": "checks.branch",
+            "control": "fill"
+          },
+          "check_number": {
+            "tag": "checks.checkNumber",
+            "control": "fill"
+          },
+          "counter_account_id": {
+            "tag": "checks.counterAccount",
+            "control": "combo"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "due_date": {
+            "tag": "checks.dueDate",
+            "control": "date"
+          },
+          "invoice_id": {
+            "tag": "checks.invoice",
+            "control": "select"
+          },
+          "issue": {
+            "tag": "checks.issueNow",
+            "control": "check"
+          },
+          "issue_date": {
+            "tag": "checks.issueDate",
+            "control": "date"
+          },
+          "notes": {
+            "tag": "checks.notes",
+            "control": "fill"
+          },
+          "project_id": {
+            "tag": "checks.project",
+            "control": "select"
+          },
+          "received_date": {
+            "tag": "checks.receivedDate",
+            "control": "date"
+          },
+          "sayadi_id": {
+            "tag": "checks.sayadiId",
+            "control": "fill"
+          },
+          "serial_number": {
+            "tag": "checks.serialNumber",
+            "control": "fill"
+          },
+          "treasury_account_id": {
+            "tag": "checks.treasuryAccount",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "allocations",
+          "check_type",
+          "party_id",
+          "treasury_transaction_id"
+        ],
+        "file": "features/checks/common.tsx"
+      }
     },
     {
       "id": "checks.list",
@@ -1951,8 +2208,7 @@
         },
         {
           "name": "bank_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "bank_name",
@@ -1995,13 +2251,11 @@
         },
         {
           "name": "received_date",
-          "type": "*civil.Date",
-          "required": true
+          "type": "*civil.Date"
         },
         {
           "name": "treasury_account_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "invoice_id",
@@ -2050,11 +2304,105 @@
       "action": "create",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
-      "accounting_impact": "check status transitions post their own entries",
+      "accounting_impact": "check status transitions post their own entries — only when check_type / issue is set",
       "ui_exists": true,
       "ui_entry_points": [
         "features/checks/common.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_triggers": [
+        "check_type",
+        "issue"
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/checks/new",
+        "fields": {
+          "account_holder": {
+            "tag": "checks.accountHolder",
+            "control": "fill"
+          },
+          "account_number": {
+            "tag": "checks.accountNumber",
+            "control": "fill"
+          },
+          "amount": {
+            "tag": "checks.amount",
+            "control": "fill"
+          },
+          "auto_allocate": {
+            "tag": "checks.autoAllocate",
+            "control": "check"
+          },
+          "bank_id": {
+            "tag": "checks.bank",
+            "control": "select"
+          },
+          "branch": {
+            "tag": "checks.branch",
+            "control": "fill"
+          },
+          "check_number": {
+            "tag": "checks.checkNumber",
+            "control": "fill"
+          },
+          "counter_account_id": {
+            "tag": "checks.counterAccount",
+            "control": "combo"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "due_date": {
+            "tag": "checks.dueDate",
+            "control": "date"
+          },
+          "invoice_id": {
+            "tag": "checks.invoice",
+            "control": "select"
+          },
+          "issue": {
+            "tag": "checks.issueNow",
+            "control": "check"
+          },
+          "issue_date": {
+            "tag": "checks.issueDate",
+            "control": "date"
+          },
+          "notes": {
+            "tag": "checks.notes",
+            "control": "fill"
+          },
+          "project_id": {
+            "tag": "checks.project",
+            "control": "select"
+          },
+          "received_date": {
+            "tag": "checks.receivedDate",
+            "control": "date"
+          },
+          "sayadi_id": {
+            "tag": "checks.sayadiId",
+            "control": "fill"
+          },
+          "serial_number": {
+            "tag": "checks.serialNumber",
+            "control": "fill"
+          },
+          "treasury_account_id": {
+            "tag": "checks.treasuryAccount",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "allocations",
+          "check_type",
+          "party_id",
+          "treasury_transaction_id"
+        ],
+        "file": "features/checks/CheckFormPage.tsx"
+      }
     },
     {
       "id": "company.account_mappings.list",
@@ -2069,7 +2417,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/settings/MappingsPage.tsx"
       ]
     },
@@ -2087,7 +2434,6 @@
       "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/settings/MappingsPage.tsx"
       ],
       "critical": true,
@@ -2117,7 +2463,9 @@
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "company.fiscal_years.reopen",
@@ -2141,7 +2489,9 @@
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "company.fiscal_years.get",
@@ -2160,7 +2510,6 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/budgets/BudgetFormPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx",
         "features/settings/FiscalYearsPage.tsx"
       ]
     },
@@ -2178,7 +2527,6 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/budgets/common.tsx",
-        "features/invoices/InvoiceViewPage.tsx",
         "features/settings/FiscalYearsPage.tsx"
       ]
     },
@@ -2211,7 +2559,6 @@
       "action": "createYear",
       "classification": "REQUIRES_APPROVAL",
       "risk": "critical",
-      "accounting_impact": "closing entries / period control",
       "ui_exists": true,
       "ui_entry_points": [
         "features/settings/FiscalYearsPage.tsx"
@@ -2219,7 +2566,34 @@
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/settings/fiscal-years",
+        "open": [
+          {
+            "tag": "settings.newFiscalYear"
+          }
+        ],
+        "dialogs": [
+          "settings.newFiscalYear"
+        ],
+        "fields": {
+          "end_date": {
+            "tag": "common.to",
+            "control": "date"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "start_date": {
+            "tag": "common.from",
+            "control": "date"
+          }
+        },
+        "file": "features/settings/FiscalYearsPage.tsx"
+      }
     },
     {
       "id": "company.logo.delete",
@@ -2234,7 +2608,6 @@
       "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/settings/CompanyPage.tsx"
       ],
       "critical": true,
@@ -2252,10 +2625,7 @@
       "action": "logo",
       "classification": "READ_ONLY",
       "risk": "low",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ],
+      "ui_exists": false,
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
       ]
@@ -2281,7 +2651,6 @@
       "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/settings/CompanyPage.tsx"
       ],
       "critical": true,
@@ -2306,7 +2675,6 @@
       "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/settings/FiscalYearsPage.tsx"
       ],
       "critical": true,
@@ -2426,7 +2794,60 @@
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "ui": {
+        "route": "/settings/company",
+        "fields": {
+          "address": {
+            "tag": "parties.address",
+            "control": "fill"
+          },
+          "allow_negative_stock": {
+            "tag": "settings.allowNegativeStock",
+            "control": "check"
+          },
+          "amount_decimals": {
+            "tag": "settings.amountDecimals",
+            "control": "select"
+          },
+          "base_currency": {
+            "tag": "settings.baseCurrency",
+            "control": "fill"
+          },
+          "calendar": {
+            "tag": "settings.calendar",
+            "control": "select"
+          },
+          "email": {
+            "tag": "parties.email",
+            "control": "fill"
+          },
+          "legal_name": {
+            "tag": "settings.legalName",
+            "control": "fill"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          },
+          "website": {
+            "tag": "settings.website",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "economic_code",
+          "national_id",
+          "phone",
+          "postal_code",
+          "registration_number"
+        ],
+        "file": "features/settings/CompanyPage.tsx"
+      }
     },
     {
       "id": "cost_centers.delete",
@@ -2442,10 +2863,7 @@
       "action": "delete",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ],
+      "ui_exists": false,
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
       ]
@@ -2504,9 +2922,42 @@
       "risk": "medium",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/costcenters/CostCentersPage.tsx",
-        "features/invoices/InvoiceFormPage.tsx"
-      ]
+        "features/costcenters/CostCentersPage.tsx"
+      ],
+      "ui": {
+        "route": "/cost-centers",
+        "row": true,
+        "dialogs": [
+          "costCenters.editCostCenter"
+        ],
+        "fields": {
+          "code": {
+            "tag": "common.code",
+            "control": "fill"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "is_active": {
+            "tag": "common.isActive",
+            "control": "check"
+          },
+          "kind": {
+            "tag": "common.type",
+            "control": "select"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          }
+        },
+        "file": "features/costcenters/CostCentersPage.tsx"
+      }
     },
     {
       "id": "cost_centers.list",
@@ -2580,7 +3031,44 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/costcenters/CostCentersPage.tsx"
-      ]
+      ],
+      "ui": {
+        "route": "/cost-centers",
+        "open": [
+          {
+            "tag": "costCenters.newCostCenter"
+          }
+        ],
+        "dialogs": [
+          "costCenters.newCostCenter"
+        ],
+        "fields": {
+          "code": {
+            "tag": "common.code",
+            "control": "fill"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "kind": {
+            "tag": "common.type",
+            "control": "select"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "is_active"
+        ],
+        "file": "features/costcenters/CostCentersPage.tsx"
+      }
     },
     {
       "id": "dashboard.list",
@@ -2614,10 +3102,7 @@
       "action": "deleteEmployee",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ],
+      "ui_exists": false,
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
       ]
@@ -2638,7 +3123,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/EmployeesPage.tsx"
       ]
     },
@@ -2832,16 +3316,127 @@
       ],
       "kind": "update",
       "action": "saveEmployee",
-      "classification": "REQUIRES_APPROVAL",
-      "risk": "high",
+      "classification": "REQUIRES_USER_CONFIRMATION",
+      "risk": "medium",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/payroll/EmployeesPage.tsx"
       ],
-      "notes": [
-        "payroll, check and budget lifecycle steps are always approved by a human"
-      ]
+      "ui": {
+        "route": "/payroll/employees",
+        "row": true,
+        "dialogs": [
+          "*"
+        ],
+        "fields": {
+          "address": {
+            "tag": "payroll.address",
+            "control": "fill"
+          },
+          "bank_account_number": {
+            "tag": "payroll.bankAccountNumber",
+            "control": "fill"
+          },
+          "bank_name": {
+            "tag": "payroll.bankName",
+            "control": "fill"
+          },
+          "base_salary": {
+            "tag": "payroll.baseSalary",
+            "control": "fill"
+          },
+          "children_count": {
+            "tag": "payroll.childrenCount",
+            "control": "fill"
+          },
+          "code": {
+            "tag": "payroll.code",
+            "control": "fill"
+          },
+          "cost_center_id": {
+            "tag": "payroll.costCenter",
+            "control": "select"
+          },
+          "department_id": {
+            "tag": "payroll.department",
+            "control": "select"
+          },
+          "email": {
+            "tag": "payroll.email",
+            "control": "fill"
+          },
+          "employment_type": {
+            "tag": "payroll.employmentType",
+            "control": "select"
+          },
+          "first_name": {
+            "tag": "payroll.firstName",
+            "control": "fill"
+          },
+          "hire_date": {
+            "tag": "payroll.hireDate",
+            "control": "date"
+          },
+          "iban": {
+            "tag": "payroll.iban",
+            "control": "fill"
+          },
+          "insurance_exempt": {
+            "tag": "payroll.insuranceExempt",
+            "control": "check"
+          },
+          "insurance_number": {
+            "tag": "payroll.insuranceNumber",
+            "control": "fill"
+          },
+          "is_active": {
+            "tag": "common.isActive",
+            "control": "check"
+          },
+          "last_name": {
+            "tag": "payroll.lastName",
+            "control": "fill"
+          },
+          "marital_status": {
+            "tag": "payroll.maritalStatus",
+            "control": "select"
+          },
+          "mobile": {
+            "tag": "payroll.mobile",
+            "control": "fill"
+          },
+          "national_id": {
+            "tag": "payroll.nationalId",
+            "control": "fill"
+          },
+          "notes": {
+            "tag": "common.notes",
+            "control": "fill"
+          },
+          "personnel_number": {
+            "tag": "payroll.personnelNumber",
+            "control": "fill"
+          },
+          "position": {
+            "tag": "payroll.position",
+            "control": "fill"
+          },
+          "tax_exempt": {
+            "tag": "payroll.taxExempt",
+            "control": "check"
+          },
+          "termination_date": {
+            "tag": "payroll.terminationDate",
+            "control": "date"
+          }
+        },
+        "missing": [
+          "allocations",
+          "components",
+          "full_name"
+        ],
+        "file": "features/payroll/EmployeesPage.tsx"
+      }
     },
     {
       "id": "employees.list",
@@ -3055,15 +3650,128 @@
       ],
       "kind": "create",
       "action": "saveEmployee",
-      "classification": "REQUIRES_APPROVAL",
-      "risk": "high",
+      "classification": "REQUIRES_USER_CONFIRMATION",
+      "risk": "medium",
       "ui_exists": true,
       "ui_entry_points": [
         "features/payroll/EmployeesPage.tsx"
       ],
-      "notes": [
-        "payroll, check and budget lifecycle steps are always approved by a human"
-      ]
+      "ui": {
+        "route": "/payroll/employees",
+        "open": [
+          {
+            "tag": "payroll.newEmployee"
+          }
+        ],
+        "dialogs": [
+          "payroll.newEmployee"
+        ],
+        "fields": {
+          "address": {
+            "tag": "payroll.address",
+            "control": "fill"
+          },
+          "bank_account_number": {
+            "tag": "payroll.bankAccountNumber",
+            "control": "fill"
+          },
+          "bank_name": {
+            "tag": "payroll.bankName",
+            "control": "fill"
+          },
+          "base_salary": {
+            "tag": "payroll.baseSalary",
+            "control": "fill"
+          },
+          "children_count": {
+            "tag": "payroll.childrenCount",
+            "control": "fill"
+          },
+          "code": {
+            "tag": "payroll.code",
+            "control": "fill"
+          },
+          "cost_center_id": {
+            "tag": "payroll.costCenter",
+            "control": "select"
+          },
+          "department_id": {
+            "tag": "payroll.department",
+            "control": "select"
+          },
+          "email": {
+            "tag": "payroll.email",
+            "control": "fill"
+          },
+          "employment_type": {
+            "tag": "payroll.employmentType",
+            "control": "select"
+          },
+          "first_name": {
+            "tag": "payroll.firstName",
+            "control": "fill"
+          },
+          "hire_date": {
+            "tag": "payroll.hireDate",
+            "control": "date"
+          },
+          "iban": {
+            "tag": "payroll.iban",
+            "control": "fill"
+          },
+          "insurance_exempt": {
+            "tag": "payroll.insuranceExempt",
+            "control": "check"
+          },
+          "insurance_number": {
+            "tag": "payroll.insuranceNumber",
+            "control": "fill"
+          },
+          "last_name": {
+            "tag": "payroll.lastName",
+            "control": "fill"
+          },
+          "marital_status": {
+            "tag": "payroll.maritalStatus",
+            "control": "select"
+          },
+          "mobile": {
+            "tag": "payroll.mobile",
+            "control": "fill"
+          },
+          "national_id": {
+            "tag": "payroll.nationalId",
+            "control": "fill"
+          },
+          "notes": {
+            "tag": "common.notes",
+            "control": "fill"
+          },
+          "personnel_number": {
+            "tag": "payroll.personnelNumber",
+            "control": "fill"
+          },
+          "position": {
+            "tag": "payroll.position",
+            "control": "fill"
+          },
+          "tax_exempt": {
+            "tag": "payroll.taxExempt",
+            "control": "check"
+          },
+          "termination_date": {
+            "tag": "payroll.terminationDate",
+            "control": "date"
+          }
+        },
+        "missing": [
+          "allocations",
+          "components",
+          "full_name",
+          "is_active"
+        ],
+        "file": "features/payroll/EmployeesPage.tsx"
+      }
     },
     {
       "id": "expenses.categories.update",
@@ -3114,8 +3822,7 @@
       "risk": "medium",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/expenses/ExpensesPage.tsx",
-        "features/invoices/InvoiceFormPage.tsx"
+        "features/expenses/ExpensesPage.tsx"
       ]
     },
     {
@@ -3132,8 +3839,7 @@
       "ui_exists": true,
       "ui_entry_points": [
         "api/queries.ts",
-        "features/expenses/ExpensesPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/expenses/ExpensesPage.tsx"
       ]
     },
     {
@@ -3180,7 +3886,6 @@
       "action": "saveCategory",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
-      "accounting_impact": "posting books Dr expense / Cr cash, bank or payable",
       "ui_exists": true,
       "ui_entry_points": [
         "features/expenses/ExpensesPage.tsx"
@@ -3200,14 +3905,16 @@
       "action": "cancel",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
+      "accounting_impact": "writes accounting entries",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/expenses/ExpensesPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/expenses/ExpensesPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "expenses.post",
@@ -3226,9 +3933,10 @@
       "accounting_impact": "posting books Dr expense / Cr cash, bank or payable",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/expenses/ExpensesPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
-      ]
+        "features/expenses/ExpensesPage.tsx"
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "expenses.delete",
@@ -3246,12 +3954,12 @@
       "risk": "high",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/expenses/ExpensesPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/expenses/ExpensesPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "financial_document": true
     },
     {
       "id": "expenses.get",
@@ -3270,8 +3978,7 @@
       "ui_exists": true,
       "ui_entry_points": [
         "api/queries.ts",
-        "features/expenses/ExpensesPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/expenses/ExpensesPage.tsx"
       ]
     },
     {
@@ -3330,13 +4037,11 @@
         },
         {
           "name": "treasury_account_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "party_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "generate_entry",
@@ -3351,11 +4056,74 @@
       "action": "update",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
+      "accounting_impact": "writes accounting entries — only when generate_entry / post is set",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/expenses/ExpensesPage.tsx",
-        "features/invoices/InvoiceFormPage.tsx"
-      ]
+        "features/expenses/ExpensesPage.tsx"
+      ],
+      "posts_entries": true,
+      "posting_triggers": [
+        "generate_entry",
+        "post"
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/expenses",
+        "row": true,
+        "dialogs": [
+          "common.edit"
+        ],
+        "fields": {
+          "account_id": {
+            "tag": "expenses.account",
+            "control": "combo"
+          },
+          "amount": {
+            "tag": "common.amount",
+            "control": "fill"
+          },
+          "category_id": {
+            "tag": "expenses.category",
+            "control": "select"
+          },
+          "cost_center_id": {
+            "tag": "journal.costCenter",
+            "control": "select"
+          },
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "generate_entry": {
+            "tag": "expenses.generateEntry",
+            "control": "check"
+          },
+          "party_id": {
+            "tag": "invoices.supplier",
+            "control": "combo"
+          },
+          "payment_method": {
+            "tag": "expenses.paymentMethod",
+            "control": "select"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          },
+          "treasury_account_id": {
+            "tag": "treasury.treasuryAccount",
+            "control": "select"
+          }
+        },
+        "missing": [
+          "post"
+        ],
+        "file": "features/expenses/ExpensesPage.tsx"
+      }
     },
     {
       "id": "expenses.list",
@@ -3438,13 +4206,11 @@
         },
         {
           "name": "treasury_account_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "party_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "generate_entry",
@@ -3459,11 +4225,78 @@
       "action": "create",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
-      "accounting_impact": "posting books Dr expense / Cr cash, bank or payable",
+      "accounting_impact": "posting books Dr expense / Cr cash, bank or payable — only when generate_entry / post is set",
       "ui_exists": true,
       "ui_entry_points": [
         "features/expenses/ExpensesPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_triggers": [
+        "generate_entry",
+        "post"
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/expenses",
+        "open": [
+          {
+            "tag": "expenses.newExpense"
+          }
+        ],
+        "dialogs": [
+          "expenses.newExpense"
+        ],
+        "fields": {
+          "account_id": {
+            "tag": "expenses.account",
+            "control": "combo"
+          },
+          "amount": {
+            "tag": "common.amount",
+            "control": "fill"
+          },
+          "category_id": {
+            "tag": "expenses.category",
+            "control": "select"
+          },
+          "cost_center_id": {
+            "tag": "journal.costCenter",
+            "control": "select"
+          },
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "generate_entry": {
+            "tag": "expenses.generateEntry",
+            "control": "check"
+          },
+          "party_id": {
+            "tag": "invoices.supplier",
+            "control": "combo"
+          },
+          "payment_method": {
+            "tag": "expenses.paymentMethod",
+            "control": "select"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          },
+          "treasury_account_id": {
+            "tag": "treasury.treasuryAccount",
+            "control": "select"
+          }
+        },
+        "missing": [
+          "post"
+        ],
+        "file": "features/expenses/ExpensesPage.tsx"
+      }
     },
     {
       "id": "inventory.documents.cancel",
@@ -3482,12 +4315,13 @@
       "accounting_impact": "stock movements at moving-average cost + inventory entry",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/inventory/StockDocViewPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/inventory/StockDocViewPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "inventory.documents.post",
@@ -3506,9 +4340,10 @@
       "accounting_impact": "stock movements at moving-average cost + inventory entry",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/inventory/StockDocViewPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
-      ]
+        "features/inventory/StockDocViewPage.tsx"
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "inventory.documents.delete",
@@ -3526,12 +4361,12 @@
       "risk": "high",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/inventory/StockDocViewPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/inventory/StockDocViewPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "financial_document": true
     },
     {
       "id": "inventory.documents.get",
@@ -3550,8 +4385,7 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/inventory/StockDocFormPage.tsx",
-        "features/inventory/StockDocViewPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/inventory/StockDocViewPage.tsx"
       ]
     },
     {
@@ -3585,8 +4419,7 @@
         },
         {
           "name": "to_warehouse_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "counter_account_id",
@@ -3610,8 +4443,7 @@
             },
             {
               "name": "product_id",
-              "type": "int64",
-              "required": true
+              "type": "int64"
             },
             {
               "name": "product_name",
@@ -3648,11 +4480,54 @@
       "action": "updateDoc",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
+      "accounting_impact": "writes accounting entries — only when post is set",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/inventory/StockDocFormPage.tsx",
-        "features/invoices/InvoiceFormPage.tsx"
-      ]
+        "features/inventory/StockDocFormPage.tsx"
+      ],
+      "posts_entries": true,
+      "posting_triggers": [
+        "post"
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/inventory/documents/:id/edit",
+        "fields": {
+          "counter_account_id": {
+            "tag": "inventory.counterAccount",
+            "control": "combo"
+          },
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          },
+          "to_warehouse_id": {
+            "tag": "inventory.toWarehouse",
+            "control": "select"
+          },
+          "warehouse_id": {
+            "tag": "treasury.fromAccount",
+            "alts": [
+              "inventory.warehouse"
+            ],
+            "control": "select"
+          }
+        },
+        "missing": [
+          "kind",
+          "lines",
+          "post"
+        ],
+        "file": "features/inventory/StockDocFormPage.tsx"
+      }
     },
     {
       "id": "inventory.documents.list",
@@ -3676,8 +4551,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/inventory/StockDocsPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/inventory/StockDocsPage.tsx"
       ]
     },
     {
@@ -3708,8 +4582,7 @@
         },
         {
           "name": "to_warehouse_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "counter_account_id",
@@ -3733,8 +4606,7 @@
             },
             {
               "name": "product_id",
-              "type": "int64",
-              "required": true
+              "type": "int64"
             },
             {
               "name": "product_name",
@@ -3771,11 +4643,54 @@
       "action": "createDoc",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
-      "accounting_impact": "stock movements at moving-average cost + inventory entry",
+      "accounting_impact": "stock movements at moving-average cost + inventory entry — only when post is set",
       "ui_exists": true,
       "ui_entry_points": [
         "features/inventory/StockDocFormPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_triggers": [
+        "post"
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/inventory/documents/new",
+        "fields": {
+          "counter_account_id": {
+            "tag": "inventory.counterAccount",
+            "control": "combo"
+          },
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          },
+          "to_warehouse_id": {
+            "tag": "inventory.toWarehouse",
+            "control": "select"
+          },
+          "warehouse_id": {
+            "tag": "treasury.fromAccount",
+            "alts": [
+              "inventory.warehouse"
+            ],
+            "control": "select"
+          }
+        },
+        "missing": [
+          "kind",
+          "lines",
+          "post"
+        ],
+        "file": "features/inventory/StockDocFormPage.tsx"
+      }
     },
     {
       "id": "inventory.ledger.list",
@@ -3797,8 +4712,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/inventory/StockLedgerPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/inventory/StockLedgerPage.tsx"
       ]
     },
     {
@@ -3821,8 +4735,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/inventory/StockPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/inventory/StockPage.tsx"
       ]
     },
     {
@@ -3870,9 +4783,38 @@
       "risk": "medium",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/inventory/WarehousesPage.tsx",
-        "features/invoices/InvoiceFormPage.tsx"
-      ]
+        "features/inventory/WarehousesPage.tsx"
+      ],
+      "ui": {
+        "route": "/inventory/warehouses",
+        "row": true,
+        "dialogs": [
+          "common.edit"
+        ],
+        "fields": {
+          "address": {
+            "tag": "parties.address",
+            "control": "fill"
+          },
+          "code": {
+            "tag": "common.code",
+            "control": "fill"
+          },
+          "is_active": {
+            "tag": "common.isActive",
+            "control": "check"
+          },
+          "is_default": {
+            "tag": "inventory.isDefault",
+            "control": "check"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          }
+        },
+        "file": "features/inventory/WarehousesPage.tsx"
+      }
     },
     {
       "id": "inventory.warehouses.list",
@@ -3887,8 +4829,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "api/queries.ts",
-        "features/invoices/InvoiceViewPage.tsx"
+        "api/queries.ts"
       ]
     },
     {
@@ -3934,7 +4875,40 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/inventory/WarehousesPage.tsx"
-      ]
+      ],
+      "ui": {
+        "route": "/inventory/warehouses",
+        "open": [
+          {
+            "tag": "inventory.newWarehouse"
+          }
+        ],
+        "dialogs": [
+          "inventory.newWarehouse"
+        ],
+        "fields": {
+          "address": {
+            "tag": "parties.address",
+            "control": "fill"
+          },
+          "code": {
+            "tag": "common.code",
+            "control": "fill"
+          },
+          "is_default": {
+            "tag": "inventory.isDefault",
+            "control": "check"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "is_active"
+        ],
+        "file": "features/inventory/WarehousesPage.tsx"
+      }
     },
     {
       "id": "journal_entries.cancel",
@@ -3960,12 +4934,13 @@
       "accounting_impact": "manual journal entry (draft → post; cancel = reversal)",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/journal/JournalViewPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "journal_entries.post",
@@ -3984,9 +4959,10 @@
       "accounting_impact": "manual journal entry (draft → post; cancel = reversal)",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/journal/JournalViewPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "journal_entries.delete",
@@ -4002,15 +4978,14 @@
       "action": "delete",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "accounting_impact": "manual journal entry (draft → post; cancel = reversal)",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/journal/JournalViewPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "financial_document": true
     },
     {
       "id": "journal_entries.get",
@@ -4029,7 +5004,6 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/checks/CheckDetailPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx",
         "features/journal/JournalFormPage.tsx",
         "features/journal/JournalViewPage.tsx"
       ]
@@ -4108,9 +5082,37 @@
       "accounting_impact": "manual journal entry (draft → post; cancel = reversal)",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/journal/JournalFormPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true,
+      "financial_document": true,
+      "ui": {
+        "route": "/journal/:id/edit",
+        "fields": {
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "number": {
+            "tag": "common.number",
+            "control": "fill"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "lines",
+          "post"
+        ],
+        "file": "features/journal/JournalFormPage.tsx"
+      }
     },
     {
       "id": "journal_entries.list",
@@ -4213,7 +5215,36 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/journal/JournalFormPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true,
+      "financial_document": true,
+      "ui": {
+        "route": "/journal/new",
+        "fields": {
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "number": {
+            "tag": "common.number",
+            "control": "fill"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "lines",
+          "post"
+        ],
+        "file": "features/journal/JournalFormPage.tsx"
+      }
     },
     {
       "id": "parties.delete",
@@ -4229,10 +5260,7 @@
       "action": "delete",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ],
+      "ui_exists": false,
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
       ]
@@ -4254,7 +5282,6 @@
       "ui_exists": true,
       "ui_entry_points": [
         "components/pickers/Pickers.tsx",
-        "features/invoices/InvoiceViewPage.tsx",
         "features/parties/PartyPage.tsx",
         "lib/documents.ts"
       ]
@@ -4379,9 +5406,106 @@
       "risk": "medium",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/parties/PartyDialog.tsx"
-      ]
+      ],
+      "ui": {
+        "route": "/parties/:id",
+        "open": [
+          {
+            "tag": "common.edit"
+          }
+        ],
+        "dialogs": [
+          "parties.editParty"
+        ],
+        "fields": {
+          "address": {
+            "tag": "parties.address",
+            "control": "fill"
+          },
+          "bank_account_number": {
+            "tag": "parties.bankAccountNumber",
+            "control": "fill"
+          },
+          "bank_name": {
+            "tag": "parties.bankName",
+            "control": "fill"
+          },
+          "code": {
+            "tag": "common.code",
+            "control": "fill"
+          },
+          "economic_code": {
+            "tag": "parties.economicCode",
+            "control": "fill"
+          },
+          "email": {
+            "tag": "parties.email",
+            "control": "fill"
+          },
+          "iban": {
+            "tag": "parties.iban",
+            "control": "fill"
+          },
+          "is_active": {
+            "tag": "common.isActive",
+            "control": "check"
+          },
+          "is_customer": {
+            "tag": "parties.customer",
+            "control": "check"
+          },
+          "is_other": {
+            "tag": "parties.other",
+            "control": "check"
+          },
+          "is_supplier": {
+            "tag": "parties.supplier",
+            "control": "check"
+          },
+          "kind": {
+            "tag": "parties.kind",
+            "control": "select"
+          },
+          "mobile": {
+            "tag": "parties.mobile",
+            "control": "fill"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "national_id": {
+            "tag": "parties.nationalId",
+            "control": "fill"
+          },
+          "notes": {
+            "tag": "common.notes",
+            "control": "fill"
+          },
+          "payable_account_id": {
+            "tag": "parties.payableAccount",
+            "control": "combo"
+          },
+          "phone": {
+            "tag": "parties.phone",
+            "control": "fill"
+          },
+          "postal_code": {
+            "tag": "parties.postalCode",
+            "control": "fill"
+          },
+          "receivable_account_id": {
+            "tag": "parties.receivableAccount",
+            "control": "combo"
+          },
+          "registration_number": {
+            "tag": "parties.registrationNumber",
+            "control": "fill"
+          }
+        },
+        "file": "features/parties/PartyDialog.tsx"
+      }
     },
     {
       "id": "parties.list",
@@ -4526,7 +5650,104 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/parties/PartyDialog.tsx"
-      ]
+      ],
+      "ui": {
+        "route": "/parties",
+        "open": [
+          {
+            "tag": "parties.newParty"
+          }
+        ],
+        "dialogs": [
+          "parties.newParty"
+        ],
+        "fields": {
+          "address": {
+            "tag": "parties.address",
+            "control": "fill"
+          },
+          "bank_account_number": {
+            "tag": "parties.bankAccountNumber",
+            "control": "fill"
+          },
+          "bank_name": {
+            "tag": "parties.bankName",
+            "control": "fill"
+          },
+          "code": {
+            "tag": "common.code",
+            "control": "fill"
+          },
+          "economic_code": {
+            "tag": "parties.economicCode",
+            "control": "fill"
+          },
+          "email": {
+            "tag": "parties.email",
+            "control": "fill"
+          },
+          "iban": {
+            "tag": "parties.iban",
+            "control": "fill"
+          },
+          "is_customer": {
+            "tag": "parties.customer",
+            "control": "check"
+          },
+          "is_other": {
+            "tag": "parties.other",
+            "control": "check"
+          },
+          "is_supplier": {
+            "tag": "parties.supplier",
+            "control": "check"
+          },
+          "kind": {
+            "tag": "parties.kind",
+            "control": "select"
+          },
+          "mobile": {
+            "tag": "parties.mobile",
+            "control": "fill"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "national_id": {
+            "tag": "parties.nationalId",
+            "control": "fill"
+          },
+          "notes": {
+            "tag": "common.notes",
+            "control": "fill"
+          },
+          "payable_account_id": {
+            "tag": "parties.payableAccount",
+            "control": "combo"
+          },
+          "phone": {
+            "tag": "parties.phone",
+            "control": "fill"
+          },
+          "postal_code": {
+            "tag": "parties.postalCode",
+            "control": "fill"
+          },
+          "receivable_account_id": {
+            "tag": "parties.receivableAccount",
+            "control": "combo"
+          },
+          "registration_number": {
+            "tag": "parties.registrationNumber",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "is_active"
+        ],
+        "file": "features/parties/PartyDialog.tsx"
+      }
     },
     {
       "id": "payroll.attendance.template",
@@ -4545,7 +5766,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/AttendanceImport.tsx"
       ]
     },
@@ -4560,7 +5780,6 @@
       "action": "installDefaults",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/payroll/ComponentsPage.tsx",
@@ -4617,13 +5836,11 @@
         },
         {
           "name": "quantity_field",
-          "type": "string",
-          "required": true
+          "type": "string"
         },
         {
           "name": "brackets",
           "type": "[]Bracket",
-          "required": true,
           "fields": [
             {
               "name": "upto",
@@ -4684,7 +5901,6 @@
         {
           "name": "insurance_share",
           "type": "string",
-          "required": true,
           "enum": [
             "employee",
             "employer",
@@ -4693,8 +5909,7 @@
         },
         {
           "name": "effective_from",
-          "type": "*civil.Date",
-          "required": true
+          "type": "*civil.Date"
         },
         {
           "name": "effective_to",
@@ -4705,15 +5920,106 @@
       "action": "saveComponent",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/payroll/ComponentsPage.tsx"
       ],
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human"
-      ]
+      ],
+      "ui": {
+        "route": "/payroll/components",
+        "row": true,
+        "dialogs": [
+          "payroll.editComponent"
+        ],
+        "fields": {
+          "account_id": {
+            "tag": "payroll.account",
+            "control": "combo"
+          },
+          "category": {
+            "tag": "payroll.category",
+            "control": "select"
+          },
+          "ceiling": {
+            "tag": "payroll.ceiling",
+            "control": "fill"
+          },
+          "code": {
+            "tag": "common.code",
+            "control": "fill"
+          },
+          "effective_from": {
+            "tag": "ui.effectiveFrom",
+            "control": "date"
+          },
+          "effective_to": {
+            "tag": "ui.effectiveTo",
+            "control": "date"
+          },
+          "exemption": {
+            "tag": "payroll.exemption",
+            "control": "fill"
+          },
+          "formula": {
+            "tag": "payroll.formula",
+            "control": "fill"
+          },
+          "insurable": {
+            "tag": "payroll.insurable",
+            "control": "check"
+          },
+          "insurance_share": {
+            "tag": "payroll.insuranceShare",
+            "control": "select"
+          },
+          "is_active": {
+            "tag": "common.isActive",
+            "control": "check"
+          },
+          "kind": {
+            "tag": "payroll.kind",
+            "control": "select"
+          },
+          "method": {
+            "tag": "payroll.method",
+            "control": "select"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          },
+          "quantity_field": {
+            "tag": "payroll.quantityField",
+            "control": "select"
+          },
+          "rate": {
+            "tag": "payroll.rate",
+            "control": "fill"
+          },
+          "seq": {
+            "tag": "payroll.seq",
+            "control": "fill"
+          },
+          "taxable": {
+            "tag": "payroll.taxable",
+            "control": "check"
+          },
+          "variability": {
+            "tag": "payroll.variability",
+            "control": "select"
+          }
+        },
+        "missing": [
+          "brackets"
+        ],
+        "file": "features/payroll/ComponentsPage.tsx"
+      }
     },
     {
       "id": "payroll.components.list",
@@ -4728,7 +6034,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/common.ts"
       ]
     },
@@ -4776,13 +6081,11 @@
         },
         {
           "name": "quantity_field",
-          "type": "string",
-          "required": true
+          "type": "string"
         },
         {
           "name": "brackets",
           "type": "[]Bracket",
-          "required": true,
           "fields": [
             {
               "name": "upto",
@@ -4843,7 +6146,6 @@
         {
           "name": "insurance_share",
           "type": "string",
-          "required": true,
           "enum": [
             "employee",
             "employer",
@@ -4852,8 +6154,7 @@
         },
         {
           "name": "effective_from",
-          "type": "*civil.Date",
-          "required": true
+          "type": "*civil.Date"
         },
         {
           "name": "effective_to",
@@ -4864,14 +6165,107 @@
       "action": "saveComponent",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/payroll/ComponentsPage.tsx"
       ],
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human"
-      ]
+      ],
+      "ui": {
+        "route": "/payroll/components",
+        "open": [
+          {
+            "tag": "payroll.newComponent"
+          }
+        ],
+        "dialogs": [
+          "payroll.newComponent"
+        ],
+        "fields": {
+          "account_id": {
+            "tag": "payroll.account",
+            "control": "combo"
+          },
+          "category": {
+            "tag": "payroll.category",
+            "control": "select"
+          },
+          "ceiling": {
+            "tag": "payroll.ceiling",
+            "control": "fill"
+          },
+          "code": {
+            "tag": "common.code",
+            "control": "fill"
+          },
+          "effective_from": {
+            "tag": "ui.effectiveFrom",
+            "control": "date"
+          },
+          "effective_to": {
+            "tag": "ui.effectiveTo",
+            "control": "date"
+          },
+          "exemption": {
+            "tag": "payroll.exemption",
+            "control": "fill"
+          },
+          "formula": {
+            "tag": "payroll.formula",
+            "control": "fill"
+          },
+          "insurable": {
+            "tag": "payroll.insurable",
+            "control": "check"
+          },
+          "insurance_share": {
+            "tag": "payroll.insuranceShare",
+            "control": "select"
+          },
+          "kind": {
+            "tag": "payroll.kind",
+            "control": "select"
+          },
+          "method": {
+            "tag": "payroll.method",
+            "control": "select"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          },
+          "quantity_field": {
+            "tag": "payroll.quantityField",
+            "control": "select"
+          },
+          "rate": {
+            "tag": "payroll.rate",
+            "control": "fill"
+          },
+          "seq": {
+            "tag": "payroll.seq",
+            "control": "fill"
+          },
+          "taxable": {
+            "tag": "payroll.taxable",
+            "control": "check"
+          },
+          "variability": {
+            "tag": "payroll.variability",
+            "control": "select"
+          }
+        },
+        "missing": [
+          "brackets",
+          "is_active"
+        ],
+        "file": "features/payroll/ComponentsPage.tsx"
+      }
     },
     {
       "id": "payroll.insurance_rules.delete",
@@ -4887,10 +6281,8 @@
       "action": "payroll_insurance_rules",
       "classification": "REQUIRES_APPROVAL",
       "risk": "critical",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
       "critical": true,
@@ -4965,16 +6357,63 @@
       "action": "saveInsuranceRule",
       "classification": "REQUIRES_APPROVAL",
       "risk": "critical",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "ui": {
+        "route": "/payroll/settings",
+        "row": true,
+        "dialogs": [
+          "payroll.editInsuranceRule"
+        ],
+        "fields": {
+          "ceiling": {
+            "tag": "payroll.ceilingLabel",
+            "control": "fill"
+          },
+          "effective_from": {
+            "tag": "ui.effectiveFrom",
+            "control": "date"
+          },
+          "effective_to": {
+            "tag": "ui.effectiveTo",
+            "control": "date"
+          },
+          "employee_rate": {
+            "tag": "payroll.employeeRate",
+            "control": "fill"
+          },
+          "employer_rate": {
+            "tag": "payroll.employerRate",
+            "control": "fill"
+          },
+          "is_active": {
+            "tag": "common.isActive",
+            "control": "check"
+          },
+          "name": {
+            "tag": "ui.name",
+            "control": "fill"
+          },
+          "notes": {
+            "tag": "ui.notes",
+            "control": "fill"
+          },
+          "unemployment_rate": {
+            "tag": "payroll.unemploymentRate",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "eligible_codes"
+        ],
+        "file": "features/payroll/PayrollSettingsPage.tsx"
+      }
     },
     {
       "id": "payroll.insurance_rules.create",
@@ -5040,7 +6479,6 @@
       "action": "saveInsuranceRule",
       "classification": "REQUIRES_APPROVAL",
       "risk": "critical",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/payroll/PayrollSettingsPage.tsx"
@@ -5048,7 +6486,57 @@
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "ui": {
+        "route": "/payroll/settings",
+        "open": [
+          {
+            "tag": "payroll.newInsuranceRule"
+          }
+        ],
+        "dialogs": [
+          "payroll.newInsuranceRule"
+        ],
+        "fields": {
+          "ceiling": {
+            "tag": "payroll.ceilingLabel",
+            "control": "fill"
+          },
+          "effective_from": {
+            "tag": "ui.effectiveFrom",
+            "control": "date"
+          },
+          "effective_to": {
+            "tag": "ui.effectiveTo",
+            "control": "date"
+          },
+          "employee_rate": {
+            "tag": "payroll.employeeRate",
+            "control": "fill"
+          },
+          "employer_rate": {
+            "tag": "payroll.employerRate",
+            "control": "fill"
+          },
+          "name": {
+            "tag": "ui.name",
+            "control": "fill"
+          },
+          "notes": {
+            "tag": "ui.notes",
+            "control": "fill"
+          },
+          "unemployment_rate": {
+            "tag": "payroll.unemploymentRate",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "eligible_codes",
+          "is_active"
+        ],
+        "file": "features/payroll/PayrollSettingsPage.tsx"
+      }
     },
     {
       "id": "payroll.liabilities.pay",
@@ -5098,7 +6586,9 @@
       ],
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.liabilities.get",
@@ -5114,10 +6604,7 @@
       "action": "getLiability",
       "classification": "READ_ONLY",
       "risk": "low",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ]
+      "ui_exists": false
     },
     {
       "id": "payroll.liabilities.list",
@@ -5137,7 +6624,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollOverviewPage.tsx",
         "features/payroll/PayrollPeriodPage.tsx"
       ]
@@ -5158,7 +6644,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollPeriodPage.tsx",
         "features/payroll/common.ts"
       ]
@@ -5197,7 +6682,9 @@
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.periods.attendance.import",
@@ -5225,7 +6712,6 @@
       "action": "import",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/payroll/AttendanceImport.tsx"
@@ -5287,7 +6773,9 @@
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.periods.close",
@@ -5323,7 +6811,9 @@
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.periods.inputs.list",
@@ -5427,7 +6917,6 @@
       "action": "putInputs",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/payroll/PayrollPeriodPage.tsx"
@@ -5470,7 +6959,9 @@
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.periods.payments.export",
@@ -5568,14 +7059,13 @@
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
       "accounting_impact": "payroll posting/payment entries",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ],
+      "ui_exists": false,
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.periods.reopen",
@@ -5611,7 +7101,9 @@
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.periods.unpay",
@@ -5647,7 +7139,9 @@
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.periods.unpost",
@@ -5683,7 +7177,9 @@
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.periods.delete",
@@ -5699,16 +7195,15 @@
       "action": "deletePeriod",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollPeriodPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "financial_document": true
     },
     {
       "id": "payroll.periods.get",
@@ -5726,7 +7221,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollPeriodPage.tsx"
       ]
     },
@@ -5746,7 +7240,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollOverviewPage.tsx",
         "features/payroll/PayrollPeriodsPage.tsx"
       ]
@@ -5777,14 +7270,39 @@
       "action": "createPeriod",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/payroll/PayrollPeriodsPage.tsx"
       ],
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human"
-      ]
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/payroll",
+        "open": [
+          {
+            "tag": "payroll.newPeriod"
+          }
+        ],
+        "dialogs": [
+          "payroll.newPeriod"
+        ],
+        "fields": {
+          "month": {
+            "tag": "payroll.month",
+            "control": "select"
+          },
+          "year": {
+            "tag": "payroll.year",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "notes"
+        ],
+        "file": "features/payroll/PayrollPeriodsPage.tsx"
+      }
     },
     {
       "id": "payroll.reports.report.list",
@@ -5809,7 +7327,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollReportPage.tsx"
       ]
     },
@@ -5826,7 +7343,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/ComponentsPage.tsx",
         "features/payroll/PayrollOverviewPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
@@ -5843,10 +7359,7 @@
       "action": "getSettings",
       "classification": "READ_ONLY",
       "risk": "low",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ]
+      "ui_exists": false
     },
     {
       "id": "payroll.settings.update",
@@ -5879,16 +7392,31 @@
       "action": "putSettings",
       "classification": "REQUIRES_APPROVAL",
       "risk": "critical",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "ui": {
+        "route": "/payroll/settings",
+        "fields": {
+          "divisor": {
+            "tag": "payroll.divisor",
+            "control": "fill"
+          },
+          "monthly_hours": {
+            "tag": "payroll.monthlyHours",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "period_days"
+        ],
+        "file": "features/payroll/PayrollSettingsPage.tsx"
+      }
     },
     {
       "id": "payroll.tax_tables.delete",
@@ -5904,10 +7432,8 @@
       "action": "payroll_tax_tables",
       "classification": "REQUIRES_APPROVAL",
       "risk": "critical",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
       "critical": true,
@@ -5985,16 +7511,55 @@
       "action": "saveTaxTable",
       "classification": "REQUIRES_APPROVAL",
       "risk": "critical",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/payroll/PayrollSettingsPage.tsx"
       ],
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "ui": {
+        "route": "/payroll/settings",
+        "row": true,
+        "dialogs": [
+          "payroll.editTaxTable"
+        ],
+        "fields": {
+          "effective_from": {
+            "tag": "ui.effectiveFrom",
+            "control": "date"
+          },
+          "effective_to": {
+            "tag": "ui.effectiveTo",
+            "control": "date"
+          },
+          "exemption": {
+            "tag": "payroll.exemptionLabel",
+            "control": "fill"
+          },
+          "is_active": {
+            "tag": "common.isActive",
+            "control": "check"
+          },
+          "mode": {
+            "tag": "payroll.mode",
+            "control": "select"
+          },
+          "name": {
+            "tag": "ui.name",
+            "control": "fill"
+          },
+          "notes": {
+            "tag": "ui.notes",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "brackets"
+        ],
+        "file": "features/payroll/PayrollSettingsPage.tsx"
+      }
     },
     {
       "id": "payroll.tax_tables.create",
@@ -6063,7 +7628,6 @@
       "action": "saveTaxTable",
       "classification": "REQUIRES_APPROVAL",
       "risk": "critical",
-      "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/payroll/PayrollSettingsPage.tsx"
@@ -6071,7 +7635,49 @@
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "ui": {
+        "route": "/payroll/settings",
+        "open": [
+          {
+            "tag": "payroll.newTaxTable"
+          }
+        ],
+        "dialogs": [
+          "payroll.newTaxTable"
+        ],
+        "fields": {
+          "effective_from": {
+            "tag": "ui.effectiveFrom",
+            "control": "date"
+          },
+          "effective_to": {
+            "tag": "ui.effectiveTo",
+            "control": "date"
+          },
+          "exemption": {
+            "tag": "payroll.exemptionLabel",
+            "control": "fill"
+          },
+          "mode": {
+            "tag": "payroll.mode",
+            "control": "select"
+          },
+          "name": {
+            "tag": "ui.name",
+            "control": "fill"
+          },
+          "notes": {
+            "tag": "ui.notes",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "brackets",
+          "is_active"
+        ],
+        "file": "features/payroll/PayrollSettingsPage.tsx"
+      }
     },
     {
       "id": "payroll.approve",
@@ -6110,7 +7716,9 @@
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.calculate",
@@ -6149,7 +7757,9 @@
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.close",
@@ -6188,7 +7798,9 @@
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.pay",
@@ -6227,7 +7839,9 @@
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.post",
@@ -6261,13 +7875,14 @@
       "accounting_impact": "payroll posting/payment entries",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/payroll/PayrollPeriodPage.tsx"
       ],
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.reopen",
@@ -6306,7 +7921,9 @@
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.unpay",
@@ -6345,7 +7962,9 @@
       "notes": [
         "payroll, check and budget lifecycle steps are always approved by a human",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.unpost",
@@ -6384,7 +8003,9 @@
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic",
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "payroll.list",
@@ -6594,7 +8215,6 @@
       "risk": "high",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/products/ProductsPage.tsx"
       ],
       "notes": [
@@ -6635,10 +8255,7 @@
       "action": "saveCategory",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx"
-      ]
+      "ui_exists": false
     },
     {
       "id": "products.categories.list",
@@ -6655,8 +8272,7 @@
       "ui_entry_points": [
         "api/queries.ts",
         "components/pickers/Pickers.tsx",
-        "features/invoices/InvoiceFormPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/invoices/InvoiceFormPage.tsx"
       ]
     },
     {
@@ -6709,10 +8325,7 @@
       "action": "delete",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ],
+      "ui_exists": false,
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
       ]
@@ -6735,8 +8348,7 @@
       "ui_entry_points": [
         "api/queries.ts",
         "components/pickers/Pickers.tsx",
-        "features/invoices/InvoiceFormPage.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/invoices/InvoiceFormPage.tsx"
       ]
     },
     {
@@ -6827,9 +8439,66 @@
       "risk": "medium",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/products/ProductsPage.tsx"
-      ]
+      ],
+      "ui": {
+        "route": "/products",
+        "row": true,
+        "dialogs": [
+          "products.editProduct"
+        ],
+        "fields": {
+          "category_id": {
+            "tag": "products.category",
+            "control": "select"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "is_active": {
+            "tag": "common.isActive",
+            "control": "check"
+          },
+          "kind": {
+            "tag": "products.kind",
+            "control": "select"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          },
+          "purchase_price": {
+            "tag": "products.purchasePrice",
+            "control": "fill"
+          },
+          "sales_price": {
+            "tag": "products.salesPrice",
+            "control": "fill"
+          },
+          "sku": {
+            "tag": "products.sku",
+            "control": "fill"
+          },
+          "tax_rate": {
+            "tag": "products.taxRate",
+            "control": "fill"
+          },
+          "track_inventory": {
+            "tag": "products.trackInventory",
+            "control": "check"
+          },
+          "unit": {
+            "tag": "products.unit",
+            "control": "fill"
+          }
+        },
+        "file": "features/products/ProductsPage.tsx"
+      }
     },
     {
       "id": "products.list",
@@ -6948,7 +8617,68 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/products/ProductsPage.tsx"
-      ]
+      ],
+      "ui": {
+        "route": "/products",
+        "open": [
+          {
+            "tag": "products.newProduct"
+          }
+        ],
+        "dialogs": [
+          "products.newProduct"
+        ],
+        "fields": {
+          "category_id": {
+            "tag": "products.category",
+            "control": "select"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "kind": {
+            "tag": "products.kind",
+            "control": "select"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          },
+          "purchase_price": {
+            "tag": "products.purchasePrice",
+            "control": "fill"
+          },
+          "sales_price": {
+            "tag": "products.salesPrice",
+            "control": "fill"
+          },
+          "sku": {
+            "tag": "products.sku",
+            "control": "fill"
+          },
+          "tax_rate": {
+            "tag": "products.taxRate",
+            "control": "fill"
+          },
+          "track_inventory": {
+            "tag": "products.trackInventory",
+            "control": "check"
+          },
+          "unit": {
+            "tag": "products.unit",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "is_active"
+        ],
+        "file": "features/products/ProductsPage.tsx"
+      }
     },
     {
       "id": "purchases.kind.cancel",
@@ -6972,7 +8702,9 @@
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "purchases.kind.convert",
@@ -6989,10 +8721,13 @@
       "action": "convert",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
+      "accounting_impact": "writes accounting entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceViewPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "purchases.kind.post",
@@ -7013,7 +8748,9 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceViewPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "purchases.kind.delete",
@@ -7036,7 +8773,8 @@
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "financial_document": true
     },
     {
       "id": "purchases.kind.get",
@@ -7091,8 +8829,7 @@
         },
         {
           "name": "warehouse_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "cost_center_id",
@@ -7153,10 +8890,65 @@
       "action": "update",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
+      "accounting_impact": "writes accounting entries — only when post is set",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_triggers": [
+        "post"
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/:side/:kind/:id/edit",
+        "fields": {
+          "cost_center_id": {
+            "tag": "journal.costCenter",
+            "control": "select"
+          },
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "due_date": {
+            "tag": "invoices.dueDate",
+            "control": "date"
+          },
+          "notes": {
+            "tag": "common.notes",
+            "control": "fill"
+          },
+          "number": {
+            "tag": "common.number",
+            "control": "fill"
+          },
+          "party_id": {
+            "tag": "invoices.customer",
+            "alts": [
+              "invoices.supplier"
+            ],
+            "control": "combo"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          },
+          "related_invoice_id": {
+            "tag": "invoices.relatedInvoice",
+            "control": "select"
+          },
+          "warehouse_id": {
+            "tag": "invoices.warehouse",
+            "control": "select"
+          }
+        },
+        "missing": [
+          "items",
+          "post"
+        ],
+        "file": "features/invoices/InvoiceFormPage.tsx"
+      }
     },
     {
       "id": "purchases.kind.list",
@@ -7186,7 +8978,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/invoices/InvoiceListPage.tsx"
       ]
     },
     {
@@ -7221,8 +9013,7 @@
         },
         {
           "name": "warehouse_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "cost_center_id",
@@ -7283,7 +9074,65 @@
       "action": "create",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
-      "ui_exists": false
+      "accounting_impact": "writes accounting entries — only when post is set",
+      "ui_exists": true,
+      "ui_entry_points": [
+        "features/invoices/InvoiceFormPage.tsx"
+      ],
+      "posts_entries": true,
+      "posting_triggers": [
+        "post"
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/:side/:kind/new",
+        "fields": {
+          "cost_center_id": {
+            "tag": "journal.costCenter",
+            "control": "select"
+          },
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "due_date": {
+            "tag": "invoices.dueDate",
+            "control": "date"
+          },
+          "notes": {
+            "tag": "common.notes",
+            "control": "fill"
+          },
+          "number": {
+            "tag": "common.number",
+            "control": "fill"
+          },
+          "party_id": {
+            "tag": "invoices.customer",
+            "alts": [
+              "invoices.supplier"
+            ],
+            "control": "combo"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          },
+          "related_invoice_id": {
+            "tag": "invoices.relatedInvoice",
+            "control": "select"
+          },
+          "warehouse_id": {
+            "tag": "invoices.warehouse",
+            "control": "select"
+          }
+        },
+        "missing": [
+          "items",
+          "post"
+        ],
+        "file": "features/invoices/InvoiceFormPage.tsx"
+      }
     },
     {
       "id": "reports.balance_sheet.list",
@@ -7301,7 +9150,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7323,7 +9172,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7345,7 +9194,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7369,7 +9218,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7392,7 +9241,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7418,7 +9267,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/reports/LedgerView.tsx"
       ],
       "notes": [
@@ -7440,7 +9288,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7464,7 +9312,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7487,7 +9335,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7508,7 +9356,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7531,7 +9379,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7556,7 +9404,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/reports/ReportPage.tsx"
       ],
       "notes": [
         "no route-level permission (any signed-in user; the handler checks entity permissions where relevant)"
@@ -7575,7 +9423,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/settings/RolesPage.tsx"
       ]
     },
@@ -7595,7 +9442,6 @@
       "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/settings/RolesPage.tsx"
       ],
       "critical": true,
@@ -7655,7 +9501,6 @@
       "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/settings/RolesPage.tsx"
       ],
       "critical": true,
@@ -7735,7 +9580,39 @@
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "ui": {
+        "route": "/settings/roles",
+        "open": [
+          {
+            "tag": "settings.newRole"
+          }
+        ],
+        "dialogs": [
+          "settings.newRole"
+        ],
+        "fields": {
+          "code": {
+            "tag": "settings.roleCode",
+            "control": "fill"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "name_en": {
+            "tag": "common.nameEn",
+            "control": "fill"
+          }
+        },
+        "missing": [
+          "description",
+          "is_system",
+          "permissions",
+          "user_count"
+        ],
+        "file": "features/settings/RolesPage.tsx"
+      }
     },
     {
       "id": "sales.kind.cancel",
@@ -7759,7 +9636,9 @@
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "sales.kind.convert",
@@ -7776,10 +9655,13 @@
       "action": "convert",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
+      "accounting_impact": "writes accounting entries",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceViewPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "sales.kind.post",
@@ -7800,7 +9682,9 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceViewPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "sales.kind.delete",
@@ -7823,7 +9707,8 @@
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "financial_document": true
     },
     {
       "id": "sales.kind.get",
@@ -7878,8 +9763,7 @@
         },
         {
           "name": "warehouse_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "cost_center_id",
@@ -7940,10 +9824,65 @@
       "action": "update",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
+      "accounting_impact": "writes accounting entries — only when post is set",
       "ui_exists": true,
       "ui_entry_points": [
         "features/invoices/InvoiceFormPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_triggers": [
+        "post"
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/:side/:kind/:id/edit",
+        "fields": {
+          "cost_center_id": {
+            "tag": "journal.costCenter",
+            "control": "select"
+          },
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "due_date": {
+            "tag": "invoices.dueDate",
+            "control": "date"
+          },
+          "notes": {
+            "tag": "common.notes",
+            "control": "fill"
+          },
+          "number": {
+            "tag": "common.number",
+            "control": "fill"
+          },
+          "party_id": {
+            "tag": "invoices.customer",
+            "alts": [
+              "invoices.supplier"
+            ],
+            "control": "combo"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          },
+          "related_invoice_id": {
+            "tag": "invoices.relatedInvoice",
+            "control": "select"
+          },
+          "warehouse_id": {
+            "tag": "invoices.warehouse",
+            "control": "select"
+          }
+        },
+        "missing": [
+          "items",
+          "post"
+        ],
+        "file": "features/invoices/InvoiceFormPage.tsx"
+      }
     },
     {
       "id": "sales.kind.list",
@@ -7973,7 +9912,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
+        "features/invoices/InvoiceListPage.tsx"
       ]
     },
     {
@@ -8008,8 +9947,7 @@
         },
         {
           "name": "warehouse_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "cost_center_id",
@@ -8070,7 +10008,65 @@
       "action": "create",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
-      "ui_exists": false
+      "accounting_impact": "writes accounting entries — only when post is set",
+      "ui_exists": true,
+      "ui_entry_points": [
+        "features/invoices/InvoiceFormPage.tsx"
+      ],
+      "posts_entries": true,
+      "posting_triggers": [
+        "post"
+      ],
+      "financial_document": true,
+      "ui": {
+        "route": "/:side/:kind/new",
+        "fields": {
+          "cost_center_id": {
+            "tag": "journal.costCenter",
+            "control": "select"
+          },
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "due_date": {
+            "tag": "invoices.dueDate",
+            "control": "date"
+          },
+          "notes": {
+            "tag": "common.notes",
+            "control": "fill"
+          },
+          "number": {
+            "tag": "common.number",
+            "control": "fill"
+          },
+          "party_id": {
+            "tag": "invoices.customer",
+            "alts": [
+              "invoices.supplier"
+            ],
+            "control": "combo"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          },
+          "related_invoice_id": {
+            "tag": "invoices.relatedInvoice",
+            "control": "select"
+          },
+          "warehouse_id": {
+            "tag": "invoices.warehouse",
+            "control": "select"
+          }
+        },
+        "missing": [
+          "items",
+          "post"
+        ],
+        "file": "features/invoices/InvoiceFormPage.tsx"
+      }
     },
     {
       "id": "settings.letterhead.preview",
@@ -8262,7 +10258,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/settings/LetterheadPage.tsx"
       ]
     },
@@ -8424,13 +10419,31 @@
       "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/settings/LetterheadPage.tsx"
       ],
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning"
-      ]
+      ],
+      "ui": {
+        "route": "/settings/letterhead",
+        "fields": {
+          "enabled": {
+            "tag": "settings.lh.enabled",
+            "control": "check"
+          },
+          "for_print": {
+            "tag": "settings.lh.forPrint",
+            "control": "check"
+          }
+        },
+        "missing": [
+          "footer",
+          "header",
+          "page"
+        ],
+        "file": "features/settings/LetterheadPage.tsx"
+      }
     },
     {
       "id": "setup.status.list",
@@ -8444,8 +10457,7 @@
       "risk": "high",
       "ui_exists": true,
       "ui_entry_points": [
-        "App.tsx",
-        "features/invoices/InvoiceViewPage.tsx"
+        "App.tsx"
       ],
       "notes": [
         "session/credential operation (sign-in, sign-out, first-time setup, changing your own password with the current one): not a business operation; credentials never pass through chat"
@@ -8484,10 +10496,7 @@
       "action": "getAccount",
       "classification": "READ_ONLY",
       "risk": "low",
-      "ui_exists": true,
-      "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx"
-      ]
+      "ui_exists": false
     },
     {
       "id": "treasury.accounts.update",
@@ -8531,8 +10540,7 @@
         },
         {
           "name": "bank_name",
-          "type": "string",
-          "required": true
+          "type": "string"
         },
         {
           "name": "branch",
@@ -8581,7 +10589,6 @@
       "risk": "medium",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/treasury/TreasuryAccountsPage.tsx"
       ]
     },
@@ -8601,8 +10608,7 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "api/queries.ts",
-        "features/invoices/InvoiceViewPage.tsx"
+        "api/queries.ts"
       ]
     },
     {
@@ -8644,8 +10650,7 @@
         },
         {
           "name": "bank_name",
-          "type": "string",
-          "required": true
+          "type": "string"
         },
         {
           "name": "branch",
@@ -8692,10 +10697,82 @@
       "action": "createAccount",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
+      "accounting_impact": "opening entry for the opening balance (cash/bank vs opening equity) — only when opening_balance is set",
       "ui_exists": true,
       "ui_entry_points": [
         "features/treasury/TreasuryAccountsPage.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_triggers": [
+        "opening_balance"
+      ],
+      "ui": {
+        "route": "/treasury",
+        "open": [
+          {
+            "tag": "treasury.newCash",
+            "field": "kind",
+            "value": "cash"
+          },
+          {
+            "tag": "treasury.newBank",
+            "field": "kind",
+            "value": "bank"
+          }
+        ],
+        "dialogs": [
+          "treasury.newCash",
+          "treasury.newBank"
+        ],
+        "fields": {
+          "account_holder": {
+            "tag": "treasury.accountHolder",
+            "control": "fill"
+          },
+          "account_number": {
+            "tag": "treasury.accountNumber",
+            "control": "fill"
+          },
+          "bank_name": {
+            "tag": "treasury.bankName",
+            "control": "fill"
+          },
+          "branch": {
+            "tag": "treasury.branch",
+            "control": "fill"
+          },
+          "card_number": {
+            "tag": "treasury.cardNumber",
+            "control": "fill"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "iban": {
+            "tag": "treasury.iban",
+            "control": "fill"
+          },
+          "name": {
+            "tag": "common.name",
+            "control": "fill"
+          },
+          "opening_balance": {
+            "tag": "treasury.openingBalance",
+            "control": "fill"
+          },
+          "opening_date": {
+            "tag": "treasury.openingDate",
+            "control": "date"
+          }
+        },
+        "missing": [
+          "account_id",
+          "is_active",
+          "kind"
+        ],
+        "file": "features/treasury/TreasuryAccountsPage.tsx"
+      }
     },
     {
       "id": "treasury.open_items.list",
@@ -8715,7 +10792,6 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/checks/common.tsx",
-        "features/invoices/InvoiceViewPage.tsx",
         "features/treasury/AllocateDialog.tsx",
         "features/treasury/TransactionDialog.tsx"
       ]
@@ -8735,7 +10811,6 @@
       "action": "releaseTx",
       "classification": "REQUIRES_APPROVAL",
       "risk": "high",
-      "accounting_impact": "posts a journal entry (cash/bank vs party or account); cancel = reversal entry",
       "ui_exists": true,
       "ui_entry_points": [
         "features/treasury/TransactionsPage.tsx"
@@ -8760,7 +10835,6 @@
         {
           "name": "allocations",
           "type": "[]invoices.AllocationInput",
-          "required": true,
           "fields": [
             {
               "name": "invoice_id",
@@ -8781,7 +10855,6 @@
       "action": "allocations",
       "classification": "REQUIRES_USER_CONFIRMATION",
       "risk": "medium",
-      "accounting_impact": "posts a journal entry (cash/bank vs party or account); cancel = reversal entry",
       "ui_exists": true,
       "ui_entry_points": [
         "features/treasury/AllocateDialog.tsx"
@@ -8804,12 +10877,13 @@
       "accounting_impact": "posts a journal entry (cash/bank vs party or account); cancel = reversal entry",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/treasury/TransactionsPage.tsx"
       ],
       "notes": [
         "cancel/delete/reverse: always approved by a human, never automatic"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true
     },
     {
       "id": "treasury.transactions.get",
@@ -8827,7 +10901,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/treasury/TransactionsPage.tsx"
       ]
     },
@@ -8857,7 +10930,6 @@
       "risk": "low",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceViewPage.tsx",
         "features/treasury/TransactionsPage.tsx"
       ]
     },
@@ -8893,13 +10965,11 @@
         },
         {
           "name": "to_treasury_account_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "party_id",
-          "type": "*int64",
-          "required": true
+          "type": "*int64"
         },
         {
           "name": "counter_account_id",
@@ -8948,7 +11018,82 @@
       "ui_exists": true,
       "ui_entry_points": [
         "features/treasury/TransactionDialog.tsx"
-      ]
+      ],
+      "posts_entries": true,
+      "posting_always": true,
+      "financial_document": true,
+      "ui": {
+        "route": "/treasury/transactions",
+        "open": [
+          {
+            "tag": "treasury.newTransfer",
+            "field": "kind",
+            "value": "transfer"
+          },
+          {
+            "tag": "treasury.newPayment",
+            "field": "kind",
+            "value": "payment"
+          },
+          {
+            "tag": "treasury.newReceipt",
+            "field": "kind",
+            "value": "receipt"
+          }
+        ],
+        "dialogs": [
+          "*"
+        ],
+        "fields": {
+          "amount": {
+            "tag": "common.amount",
+            "control": "fill"
+          },
+          "cost_center_id": {
+            "tag": "journal.costCenter",
+            "control": "select"
+          },
+          "counter_account_id": {
+            "tag": "journal.account",
+            "tab": "account",
+            "control": "combo"
+          },
+          "date": {
+            "tag": "common.date",
+            "control": "date"
+          },
+          "description": {
+            "tag": "common.description",
+            "control": "fill"
+          },
+          "party_id": {
+            "tag": "treasury.payee",
+            "tab": "party",
+            "control": "combo"
+          },
+          "reference": {
+            "tag": "common.reference",
+            "control": "fill"
+          },
+          "to_treasury_account_id": {
+            "tag": "treasury.toAccount",
+            "control": "select"
+          },
+          "treasury_account_id": {
+            "tag": "treasury.fromAccount",
+            "alts": [
+              "treasury.treasuryAccount"
+            ],
+            "control": "select"
+          }
+        },
+        "missing": [
+          "allocations",
+          "auto_allocate",
+          "kind"
+        ],
+        "file": "features/treasury/TransactionDialog.tsx"
+      }
     },
     {
       "id": "users.update",
@@ -8992,14 +11137,43 @@
       "risk": "critical",
       "ui_exists": true,
       "ui_entry_points": [
-        "features/invoices/InvoiceFormPage.tsx",
         "features/settings/UsersPage.tsx"
       ],
       "critical": true,
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning",
         "password fields only accept \"$generate\": a temporary password is generated and shown once to the user"
-      ]
+      ],
+      "ui": {
+        "route": "/settings/users",
+        "row": true,
+        "dialogs": [
+          "settings.editUser"
+        ],
+        "fields": {
+          "email": {
+            "tag": "auth.email",
+            "control": "fill"
+          },
+          "full_name": {
+            "tag": "setup.fullName",
+            "control": "fill"
+          },
+          "is_active": {
+            "tag": "common.isActive",
+            "control": "check"
+          },
+          "password": {
+            "tag": "auth.password",
+            "control": "fill"
+          },
+          "role_id": {
+            "tag": "settings.role",
+            "control": "select"
+          }
+        },
+        "file": "features/settings/UsersPage.tsx"
+      }
     },
     {
       "id": "users.list",
@@ -9062,7 +11236,40 @@
       "notes": [
         "security, configuration or period control: always approved by a human, shown with a critical warning",
         "password fields only accept \"$generate\": a temporary password is generated and shown once to the user"
-      ]
+      ],
+      "ui": {
+        "route": "/settings/users",
+        "open": [
+          {
+            "tag": "settings.newUser"
+          }
+        ],
+        "dialogs": [
+          "settings.newUser"
+        ],
+        "fields": {
+          "email": {
+            "tag": "auth.email",
+            "control": "fill"
+          },
+          "full_name": {
+            "tag": "setup.fullName",
+            "control": "fill"
+          },
+          "password": {
+            "tag": "auth.password",
+            "control": "fill"
+          },
+          "role_id": {
+            "tag": "settings.role",
+            "control": "select"
+          }
+        },
+        "missing": [
+          "is_active"
+        ],
+        "file": "features/settings/UsersPage.tsx"
+      }
     }
   ],
   "ui_calls_without_backend": null

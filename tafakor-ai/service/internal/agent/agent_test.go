@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -29,20 +30,29 @@ type fakeAcc struct {
 	txs         []map[string]any
 	expenses    []map[string]any
 	attachments map[string][]string
+	attachIDs   map[string][]int
+	nextAttach  int
+	attachBytes map[int][]byte
 	products    []map[string]any
 	parties     []map[string]any
 	stockDocs   []map[string]any
 	posts       int
 	users       []map[string]any // as received, including the password
+	invoices    []map[string]any // sales documents (quotations, invoices)
+	pdfs        []map[string]any // documents sent to the PDF service
+	hits        []string         // every request, "METHOD /path"
 	srv         *httptest.Server
+	// extra: handlers a test adds (they take precedence over the built-in ones)
+	extra *http.ServeMux
 }
 
 var adminPerms = []string{"parties.create", "parties.edit", "products.view", "products.create", "inventory.view", "inventory.create", "inventory.post", "parties.view", "cost_centers.view", "treasury.view", "treasury.create", "treasury.post", "treasury.cancel",
-	"expenses.view", "expenses.create", "expenses.post", "expenses.cancel", "accounts.view", "company.view", "sales.view", "settings.edit", "users.view", "users.create"}
+	"expenses.view", "expenses.create", "expenses.post", "expenses.cancel", "accounts.view", "company.view", "sales.view", "sales.create", "settings.edit", "users.view", "users.create",
+	"payroll.view", "payroll.create", "payroll.edit"}
 var viewerPerms = []string{"parties.view", "cost_centers.view", "treasury.view", "expenses.view", "accounts.view", "company.view"}
 
 func newFakeAcc(t *testing.T) *fakeAcc {
-	f := &fakeAcc{attachments: map[string][]string{}}
+	f := &fakeAcc{attachments: map[string][]string{}, attachIDs: map[string][]int{}, attachBytes: map[int][]byte{}}
 	mux := http.NewServeMux()
 	js := func(w http.ResponseWriter, v any) {
 		w.Header().Set("Content-Type", "application/json")
@@ -93,7 +103,8 @@ func newFakeAcc(t *testing.T) *fakeAcc {
 		q := r.URL.Query().Get("q")
 		out := []map[string]any{}
 		for _, p := range f.parties {
-			if q == "" || strings.Contains(p["name"].(string), q) {
+			// like the app: name, mobile or phone contains q
+			if q == "" || strings.Contains(p["name"].(string), q) || strings.Contains(fmt.Sprint(p["mobile"]), q) || strings.Contains(fmt.Sprint(p["phone"]), q) {
 				out = append(out, p)
 			}
 		}
@@ -273,13 +284,18 @@ func newFakeAcc(t *testing.T) *fakeAcc {
 	mux.HandleFunc("GET /api/v1/expenses", func(w http.ResponseWriter, r *http.Request) { js(w, map[string]any{"items": f.expenses}) })
 	mux.HandleFunc("POST /api/v1/attachments", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseMultipartForm(1 << 20)
-		_, h, _ := r.FormFile("file")
+		file, h, _ := r.FormFile("file")
+		content, _ := io.ReadAll(file)
 		f.mu.Lock()
 		k := r.FormValue("entity_type") + ":" + r.FormValue("entity_id")
 		f.attachments[k] = append(f.attachments[k], h.Filename)
+		f.nextAttach++
+		id := f.nextAttach
+		f.attachIDs[k] = append(f.attachIDs[k], id)
+		f.attachBytes[id] = content
 		f.mu.Unlock()
 		w.WriteHeader(201)
-		js(w, map[string]any{"id": 1})
+		js(w, map[string]any{"id": id, "file_name": h.Filename})
 	})
 	mux.HandleFunc("POST /api/v1/users", func(w http.ResponseWriter, r *http.Request) {
 		var in map[string]any
@@ -291,16 +307,86 @@ func newFakeAcc(t *testing.T) *fakeAcc {
 		w.WriteHeader(201)
 		js(w, map[string]any{"id": id, "email": in["email"], "full_name": in["full_name"]})
 	})
+	mux.HandleFunc("GET /api/v1/attachments/{id}/download", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		id, _ := strconv.Atoi(r.PathValue("id"))
+		b, ok := f.attachBytes[id]
+		if !ok {
+			w.WriteHeader(404)
+			return
+		}
+		w.Header().Set("Content-Type", http.DetectContentType(b))
+		_, _ = w.Write(b)
+	})
 	mux.HandleFunc("GET /api/v1/attachments", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		var out []map[string]any
-		for _, n := range f.attachments[r.URL.Query().Get("entity_type")+":"+r.URL.Query().Get("entity_id")] {
-			out = append(out, map[string]any{"file_name": n})
+		k := r.URL.Query().Get("entity_type") + ":" + r.URL.Query().Get("entity_id")
+		for i, n := range f.attachments[k] {
+			out = append(out, map[string]any{"id": f.attachIDs[k][i], "file_name": n})
 		}
 		js(w, out)
 	})
-	f.srv = httptest.NewServer(mux)
+	salesKinds := map[string]string{"quotations": "quotation", "invoices": "invoice", "returns": "return"}
+	mux.HandleFunc("POST /api/v1/sales/{kind}", func(w http.ResponseWriter, r *http.Request) {
+		if !perms(r)["sales.create"] {
+			deny(w)
+			return
+		}
+		var in map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		inv := map[string]any{"id": 300 + len(f.invoices), "side": "sales", "kind": salesKinds[r.PathValue("kind")], "number": len(f.invoices) + 1,
+			"date": in["date"], "party_id": in["party_id"], "status": "draft", "total": "190000000", "subtotal": "190000000", "discount_total": "0", "tax_total": "0",
+			"items": []map[string]any{{"description": "سیستم", "quantity": "1", "unit": "عدد", "unit_price": "190000000", "discount": "0", "tax_amount": "0", "total": "190000000"}}}
+		for _, p := range f.parties {
+			if fmt.Sprint(p["id"]) == fmt.Sprint(in["party_id"]) {
+				inv["party_name"] = p["name"]
+			}
+		}
+		f.invoices = append(f.invoices, inv)
+		f.posts++
+		w.WriteHeader(201)
+		js(w, inv)
+	})
+	mux.HandleFunc("GET /api/v1/sales/{kind}/{id}", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		for _, inv := range f.invoices {
+			if fmt.Sprint(inv["id"]) == r.PathValue("id") && inv["kind"] == salesKinds[r.PathValue("kind")] {
+				js(w, inv)
+				return
+			}
+		}
+		w.WriteHeader(404)
+		_, _ = w.Write([]byte(`{"error":{"code":"not_found","message":"not found"}}`))
+	})
+	mux.HandleFunc("GET /api/v1/company", func(w http.ResponseWriter, r *http.Request) {
+		js(w, map[string]any{"name": "شرکت نمونه", "base_currency": "IRR"})
+	})
+	mux.HandleFunc("POST /api/v1/pdf", func(w http.ResponseWriter, r *http.Request) {
+		var doc map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&doc)
+		f.mu.Lock()
+		f.pdfs = append(f.pdfs, doc)
+		f.mu.Unlock()
+		w.Header().Set("Content-Type", "application/pdf")
+		_, _ = w.Write([]byte("%PDF-1.4 test"))
+	})
+	f.extra = http.NewServeMux()
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.hits = append(f.hits, r.Method+" "+r.URL.Path)
+		f.mu.Unlock()
+		if _, pattern := f.extra.Handler(r); pattern != "" {
+			f.extra.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 	t.Cleanup(f.srv.Close)
 	return f
 }
@@ -471,7 +557,7 @@ func TestLoanEndToEndHumanApproval(t *testing.T) {
 	uap := approvalOf(t, rec)
 	undoID := uap["task_id"].(string)
 	rec = &Recorder{}
-	h.a.Approve(ctx, h.user, undoID, ApproveRequest{Token: uap["token"].(string)}, rec)
+	h.a.Approve(ctx, h.user, undoID, ApproveRequest{Token: uap["token"].(string), ExecMode: "direct"}, rec)
 	if h.acc.txs[0]["status"] != "cancelled" {
 		t.Fatalf("undo did not cancel: %+v", rec.Events)
 	}

@@ -58,6 +58,19 @@ var NeverAuto = map[string]bool{
 	"create_invoice": true, "create_purchase": true, "create_inventory_receipt": true,
 }
 
+// NeverAutoTools are the catalog operations (plan steps) of the same never-automatic
+// classes: checks, journal entries, sales/purchase documents and their posting,
+// stock documents. Before the audit (2026-10-08) plan steps were looked up in
+// NeverAuto by tool id, which never matched, so «مستقیم ثبت کن» skipped the human
+// approval these documents always need.
+var NeverAutoTools = map[string]bool{
+	"checks.create": true, "checks.update": true,
+	"journal_entries.create": true, "journal_entries.update": true, "journal_entries.post": true,
+	"sales.kind.create": true, "sales.kind.update": true, "sales.kind.post": true, "sales.kind.convert": true,
+	"purchases.kind.create": true, "purchases.kind.update": true, "purchases.kind.post": true, "purchases.kind.convert": true,
+	"inventory.documents.create": true, "inventory.documents.update": true, "inventory.documents.post": true,
+}
+
 // Facts are computed by the service (resolution, duplicate check, period check …).
 type Facts struct {
 	Action           string
@@ -271,26 +284,27 @@ func ApplySwitch(s *store.UserSettings, wantAuto, riskConfirmed, companyLock boo
 
 // ReasonText gives a plain-language explanation for a failed check (en, fa).
 var ReasonText = map[string][2]string{
-	"no_permission":              {"you don't have permission for this action", "شما مجوز این کار را ندارید"},
-	"period_locked":              {"the date falls in a closed fiscal year or locked period", "تاریخ در سال مالی بسته یا دوره قفل‌شده است"},
-	"auto_switch_on":             {"you asked to approve every registration", "تنظیم شما «قبل از ثبت از من بپرس» است"},
-	"company_allows_auto":        {"your company does not allow automatic registration", "ثبت خودکار در شرکت شما مجاز نیست"},
-	"not_asked_this_time":        {"you asked me to check with you this time", "خواستید این بار از شما بپرسم"},
-	"action_never_automatic":     {"this kind of action always needs your approval", "این نوع عملیات همیشه تایید شما را لازم دارد"},
-	"action_requires_approval":   {"this operation is always reviewed by a human before it is registered", "این عملیات همیشه پیش از ثبت نیاز به بازبینی انسانی دارد"},
-	"action_allowed_automatic":   {"this action type is not enabled for automatic registration", "این نوع عملیات برای ثبت خودکار فعال نیست"},
-	"not_duplicate":              {"possible duplicate", "احتمال ثبت تکراری"},
-	"no_conflict":                {"your instruction and the document don't match", "دستور شما با سند مطابقت ندارد"},
-	"not_ambiguous":              {"a party, project or account is unclear", "طرف حساب، پروژه یا حساب مشخص نیست"},
-	"confident_fields":           {"some values were read with low confidence", "برخی مقادیر با اطمینان کم خوانده شدند"},
-	"open_period":                {"the period is not open", "دوره مالی باز نیست"},
-	"no_budget_event":            {"budget control applies", "کنترل بودجه اعمال می‌شود"},
-	"no_validation_issue":        {"there is a validation warning", "هشدار اعتبارسنجی وجود دارد"},
-	"explicitly_requested":       {"you didn't explicitly ask for this registration", "این ثبت را صریحاً درخواست نکرده‌اید"},
-	"not_from_document_text":     {"the request comes from text inside a document", "درخواست از متن داخل سند آمده است"},
-	"base_currency":              {"a foreign-currency amount needs an exchange rate", "مبلغ ارزی نیاز به نرخ تبدیل دارد"},
-	"rule_trusted":               {"a learned rule still needs your confirmation", "قاعده آموخته‌شده هنوز نیاز به تایید دارد"},
-	"within_amount_limit":        {"the amount is above your automatic limit", "مبلغ بیشتر از سقف ثبت خودکار شماست"},
-	"within_daily_cap":           {"today's automatic registrations limit is reached", "سقف ثبت خودکار امروز پر شده است"},
-	"plan_requires_confirmation": {"a multi-step operation that changes data always needs your confirmation", "عملیات چندمرحله‌ای که داده را تغییر می‌دهد همیشه تایید شما را لازم دارد"},
+	"no_permission":               {"you don't have permission for this action", "شما مجوز این کار را ندارید"},
+	"period_locked":               {"the date falls in a closed fiscal year or locked period", "تاریخ در سال مالی بسته یا دوره قفل‌شده است"},
+	"auto_switch_on":              {"you asked to approve every registration", "تنظیم شما «قبل از ثبت از من بپرس» است"},
+	"company_allows_auto":         {"your company does not allow automatic registration", "ثبت خودکار در شرکت شما مجاز نیست"},
+	"not_asked_this_time":         {"you asked me to check with you this time", "خواستید این بار از شما بپرسم"},
+	"action_never_automatic":      {"this kind of action always needs your approval", "این نوع عملیات همیشه تایید شما را لازم دارد"},
+	"action_requires_approval":    {"this operation is always reviewed by a human before it is registered", "این عملیات همیشه پیش از ثبت نیاز به بازبینی انسانی دارد"},
+	"action_allowed_automatic":    {"this action type is not enabled for automatic registration", "این نوع عملیات برای ثبت خودکار فعال نیست"},
+	"not_duplicate":               {"possible duplicate", "احتمال ثبت تکراری"},
+	"no_conflict":                 {"your instruction and the document don't match", "دستور شما با سند مطابقت ندارد"},
+	"not_ambiguous":               {"a party, project or account is unclear", "طرف حساب، پروژه یا حساب مشخص نیست"},
+	"confident_fields":            {"some values were read with low confidence", "برخی مقادیر با اطمینان کم خوانده شدند"},
+	"open_period":                 {"the period is not open", "دوره مالی باز نیست"},
+	"no_budget_event":             {"budget control applies", "کنترل بودجه اعمال می‌شود"},
+	"no_validation_issue":         {"there is a validation warning", "هشدار اعتبارسنجی وجود دارد"},
+	"explicitly_requested":        {"you didn't explicitly ask for this registration", "این ثبت را صریحاً درخواست نکرده‌اید"},
+	"not_from_document_text":      {"the request comes from text inside a document", "درخواست از متن داخل سند آمده است"},
+	"base_currency":               {"a foreign-currency amount needs an exchange rate", "مبلغ ارزی نیاز به نرخ تبدیل دارد"},
+	"rule_trusted":                {"a learned rule still needs your confirmation", "قاعده آموخته‌شده هنوز نیاز به تایید دارد"},
+	"within_amount_limit":         {"the amount is above your automatic limit", "مبلغ بیشتر از سقف ثبت خودکار شماست"},
+	"within_daily_cap":            {"today's automatic registrations limit is reached", "سقف ثبت خودکار امروز پر شده است"},
+	"plan_requires_confirmation":  {"a multi-step operation that changes data always needs your confirmation", "عملیات چندمرحله‌ای که داده را تغییر می‌دهد همیشه تایید شما را لازم دارد"},
+	"plan_changes_financial_data": {"it moves money or posts accounting entries, so please confirm it", "مبلغ یا سند حسابداری ثبت می‌کند، پس لطفاً تایید کنید"},
 }

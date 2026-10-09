@@ -127,3 +127,22 @@ Branch: `feature/tafakor-ai` (never pushed, never merged by the agent).
 - All suites green: core backend incl. PostgreSQL integration, frontend 57, AI service, widget; removal verified.
 - `test/employee_scenarios.py` extended with the parity examples (bank account + opening balance, transfer, settle
   existing receipt, user management); not run — OpenRouter account has ≈ $0.03.
+
+### Follow-up — reliability audit (2026-10-08): DONE (see RELIABILITY_AUDIT.md)
+- Domain layer before tools (payroll ≠ expense), deterministic skills (salary components, employee pay, transfers, invoices from
+  documents), plan guards (schema, dates, unit-aware amounts, entities, duplicates, grounded answers), reconciliation instead of
+  blind retries, value read-back, resume-with-reconcile, `/tasks/{id}/trace`. D47–D58.
+- 26 failures reproduced live and fixed with regression tests. E2E matrix through the real widget: 18/33 → 31/33; repeat ×2 61/66
+  (remaining: expense-vs-supplier-payment classification, upstream rate limits). Fault injection 7/7. Stress 40/40.
+
+### Follow-up — executor capability, read intent, fresh-context recovery (2026-10-09): DONE (see EXECUTOR_CAPABILITY_AUDIT.md)
+- One execution capability registry derived from the real executors; the planner sees only operations with an executor and a
+  verification path (215/225); executor selected before the card; persisted execution state; «مستقیم اجرا کن» resumes the same
+  task without re-planning or bypassing approval; no fallback loop. CI invariant tests. D59.
+- Targets grounded through the application (no guessed ids; names resolved; word-by-word search), deletes verified by
+  read-back, already-completed deletes not resent, unresolvable references refused. D60.
+- «X را بگو / نمایش بده / لیست کن» is a read (never a UI location); payroll rules and payroll posting rules read from the
+  application; invented statutory values refused. D61.
+- Deterministic context-conflict detector, one automatic fresh context per request (exact text, same attachments, same
+  request_id), request trace and recovery metrics; stopped/approval tasks no longer absorb new requests; JSON-aware audit
+  masking (traces had broken on large amounts). D62.

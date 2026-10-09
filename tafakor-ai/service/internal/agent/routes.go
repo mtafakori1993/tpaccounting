@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/tafakorpardazan/tafakor-ai/internal/execmode"
 	"io"
 	"log/slog"
 	"net/http"
@@ -91,12 +92,18 @@ func (h *HTTP) Register(mux *http.ServeMux, auth func(http.Handler) http.Handler
 		}
 		h.A.UIResult(ctx, u, r.PathValue("id"), req, e)
 	}))
+	handle("POST /ai-api/tasks/{id}/resume-ui", h.sse(func(ctx context.Context, u *User, r *http.Request, e Emitter) {
+		h.A.ResumeUI(ctx, u, r.PathValue("id"), e)
+	}))
 	handle("POST /ai-api/tasks/{id}/reissue", h.sse(func(ctx context.Context, u *User, r *http.Request, e Emitter) {
 		h.A.Reissue(ctx, u, r.PathValue("id"), e)
 	}))
 	handle("POST /ai-api/tasks/{id}/cancel", h.cancel)
 	handle("POST /ai-api/tasks/{id}/remember", h.remember)
 	handle("GET /ai-api/tasks/{id}", h.getTask)
+	handle("GET /ai-api/tasks/{id}/trace", h.trace)
+	handle("GET /ai-api/requests/{id}/trace", h.requestTrace)
+	handle("GET /ai-api/metrics/context", h.contextMetrics)
 	handle("GET /ai-api/tasks", h.listTasks)
 	handle("GET /ai-api/activity", h.activity)
 	handle("GET /ai-api/conversations/{id}", h.conversation)
@@ -159,13 +166,15 @@ func (h *HTTP) me(w http.ResponseWriter, r *http.Request) {
 func canPromote(u *User) bool { return u.Me.Can("settings.edit") }
 
 type settingsRequest struct {
-	AutoMode      *bool             `json:"auto_mode"`
-	RiskConfirmed bool              `json:"risk_confirmed"`
-	MaxAmount     map[string]string `json:"max_amount"`
-	MaxPerDay     *int              `json:"max_per_day"`
-	AutoActions   []string          `json:"auto_actions"`
-	Simulation    *bool             `json:"simulation"`
-	VoiceReply    *bool             `json:"voice_reply"`
+	AutoMode       *bool             `json:"auto_mode"`
+	RiskConfirmed  bool              `json:"risk_confirmed"`
+	MaxAmount      map[string]string `json:"max_amount"`
+	MaxPerDay      *int              `json:"max_per_day"`
+	AutoActions    []string          `json:"auto_actions"`
+	Simulation     *bool             `json:"simulation"`
+	VoiceReply     *bool             `json:"voice_reply"`
+	ExecPreference *string           `json:"exec_preference"`
+	ExecSpeed      *string           `json:"exec_speed"`
 }
 
 // putSettings is the ONLY way to change the approval switch and limits: an explicit
@@ -205,6 +214,20 @@ func (h *HTTP) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.VoiceReply != nil {
 		s.VoiceReply = *req.VoiceReply
+	}
+	if req.ExecSpeed != nil {
+		if v := *req.ExecSpeed; v != "human" && v != "normal" && v != "instant" {
+			httpapi.WriteErr(w, 422, "invalid", "pointer speed must be human, normal or instant")
+			return
+		}
+		s.ExecSpeed = *req.ExecSpeed
+	}
+	if req.ExecPreference != nil {
+		if !execmode.Valid(*req.ExecPreference) {
+			httpapi.WriteErr(w, 422, "invalid", "execution preference must be human_ui or direct")
+			return
+		}
+		s.ExecPreference = *req.ExecPreference
 	}
 	if err := policy.ValidateSettings(&s); err != nil {
 		httpapi.WriteErr(w, 422, "invalid", err.Error())
@@ -376,6 +399,34 @@ func (h *HTTP) getTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, 200, taskView(t))
+}
+
+// trace: TASK → DECISION → PLAN → STEP → TOOL → RESULT → VERIFICATION → OUTCOME.
+func (h *HTTP) trace(w http.ResponseWriter, r *http.Request) {
+	out, err := h.A.Trace(r.Context(), user(r), r.PathValue("id"))
+	if err != nil {
+		httpapi.WriteErr(w, 404, "not_found", "task not found")
+		return
+	}
+	httpapi.WriteJSON(w, 200, out)
+}
+
+func (h *HTTP) requestTrace(w http.ResponseWriter, r *http.Request) {
+	out, err := h.A.RequestTrace(r.Context(), user(r), r.PathValue("id"))
+	if err != nil {
+		httpapi.WriteErr(w, 404, "not_found", "request not found")
+		return
+	}
+	httpapi.WriteJSON(w, 200, out)
+}
+
+func (h *HTTP) contextMetrics(w http.ResponseWriter, r *http.Request) {
+	out, err := h.A.ContextMetrics(r.Context(), user(r))
+	if err != nil {
+		httpapi.WriteErr(w, 500, "storage", "unavailable")
+		return
+	}
+	httpapi.WriteJSON(w, 200, out)
 }
 
 func (h *HTTP) listTasks(w http.ResponseWriter, r *http.Request) {

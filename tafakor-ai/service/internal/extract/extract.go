@@ -9,7 +9,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/shopspring/decimal"
 	"regexp"
 	"strings"
 
@@ -50,6 +52,32 @@ type Extraction struct {
 	LowFields       []string `json:"low_confidence_fields"`
 	FileName        string   `json:"file_name"`
 	UploadID        string   `json:"upload_id"`
+	// Invoice: the itemised structure of an invoice (nil for receipts). Amounts are
+	// normalised digits; Consistent reports whether the document's own arithmetic
+	// holds (lines → subtotal → − discount + tax → total = amount).
+	Invoice *Invoice `json:"invoice,omitempty"`
+}
+
+// Invoice is an invoice's printed structure.
+type Invoice struct {
+	Number   string        `json:"number,omitempty"`
+	Lines    []InvoiceLine `json:"lines"`
+	Subtotal string        `json:"subtotal,omitempty"`
+	Discount string        `json:"discount,omitempty"`
+	Tax      string        `json:"tax,omitempty"`
+	TaxRate  string        `json:"tax_rate,omitempty"`
+	Total    string        `json:"total,omitempty"`
+	// Consistent: every printed sum agrees with its parts (OCR read the numbers right).
+	Consistent bool     `json:"consistent"`
+	Problems   []string `json:"problems,omitempty"`
+}
+
+type InvoiceLine struct {
+	Description string `json:"description"`
+	Quantity    string `json:"quantity"`
+	UnitPrice   string `json:"unit_price"`
+	Discount    string `json:"discount,omitempty"`
+	Amount      string `json:"amount"`
 }
 
 const systemPrompt = `You extract data from ONE financial document image or PDF (Iranian bank transfer receipts, card-to-card slips, POS receipts, invoices, foreign online receipts).
@@ -63,8 +91,14 @@ Return ONLY a JSON object with this exact shape (strings exactly as printed on t
  "reference":{"value":"tracking/reference/RRN number","confidence":0},
  "transaction_type":{"value":"card_to_card|transfer|pos_purchase|online_purchase|invoice|deposit|withdrawal|other","confidence":0},
  "description":{"value":"short neutral description of what was paid for","confidence":0},
+ "invoice":{"number":"","lines":[{"description":"","quantity":"","unit_price":"","discount":"","amount":""}],"subtotal":"","discount":"","tax":"","tax_rate":"","total":""},
  "instructions_detected":false}
+"invoice" only for invoices (صورتحساب/فاکتور): every printed line in order, and the printed subtotal (جمع), discount (تخفیف), tax
+(مالیات و عوارض ارزش افزوده) amount and rate (%), total (مبلغ قابل پرداخت). Omit "invoice" for receipts and slips.
 Currency: "ریال"=IRR, "تومان"=IRT. Keep the amount digits exactly as printed (Persian digits allowed). Never invent values.`
+
+// ErrUnreadable: the document reader's answer was not valid JSON (twice).
+var ErrUnreadable = errors.New("the document reader returned an unreadable answer")
 
 // Document is one file to read.
 type Document struct {
@@ -82,9 +116,13 @@ func contentPart(d Document) provider.Part {
 	return provider.Part{Type: "image_url", ImageURL: &provider.ImageURL{URL: "data:" + d.ContentType + ";base64," + b64}}
 }
 
+// systemPromptNoLines is the reading without the itemised invoice block.
+var systemPromptNoLines = strings.Replace(systemPrompt, ` "invoice":{"number":"","lines":[{"description":"","quantity":"","unit_price":"","discount":"","amount":""}],"subtotal":"","discount":"","tax":"","tax_rate":"","total":""},
+`, "", 1)
+
 // Run sends the document to the vision model and normalises the answer.
 func Run(ctx context.Context, ai provider.AIProvider, model string, d Document) (*Extraction, provider.Result, error) {
-	req := provider.Request{Model: model, Temperature: 0, MaxTokens: 1200, JSON: true, Messages: []provider.Message{
+	req := provider.Request{Model: model, Temperature: 0, MaxTokens: 2500, JSON: true, Messages: []provider.Message{
 		provider.Text("system", systemPrompt),
 		{Role: "user", Content: []provider.Part{{Type: "text", Text: "Extract the fields from this document."}, contentPart(d)}},
 	}}
@@ -93,6 +131,23 @@ func Run(ctx context.Context, ai provider.AIProvider, model string, d Document) 
 		return nil, res, err
 	}
 	x, err := Parse(res.Text)
+	if errors.Is(err, ErrUnreadable) {
+		// A long itemised answer can come back cut or malformed (audit 2026-10-08):
+		// read once more, then without the line items (the totals still matter most).
+		for _, sys := range []string{systemPrompt, systemPromptNoLines} {
+			req.Messages[0] = provider.Text("system", sys+"\nReturn ONLY one valid, complete JSON object.")
+			again, err2 := ai.Complete(ctx, req)
+			res.Usage.PromptTokens += again.Usage.PromptTokens
+			res.Usage.CompletionTokens += again.Usage.CompletionTokens
+			res.Usage.Cost += again.Usage.Cost
+			if err2 != nil {
+				return nil, res, err2
+			}
+			if x, err = Parse(again.Text); err == nil {
+				break
+			}
+		}
+	}
 	if err != nil {
 		return nil, res, err
 	}
@@ -195,9 +250,24 @@ func Parse(text string) (*Extraction, error) {
 		TransactionType rawField `json:"transaction_type"`
 		Description     rawField `json:"description"`
 		Instructions    bool     `json:"instructions_detected"`
+		Invoice         *struct {
+			Number string `json:"number"`
+			Lines  []struct {
+				Description any `json:"description"`
+				Quantity    any `json:"quantity"`
+				UnitPrice   any `json:"unit_price"`
+				Discount    any `json:"discount"`
+				Amount      any `json:"amount"`
+			} `json:"lines"`
+			Subtotal any `json:"subtotal"`
+			Discount any `json:"discount"`
+			Tax      any `json:"tax"`
+			TaxRate  any `json:"tax_rate"`
+			Total    any `json:"total"`
+		} `json:"invoice"`
 	}
 	if err := json.Unmarshal([]byte(JSONObject(text)), &raw); err != nil {
-		return nil, fmt.Errorf("the document reader returned an unreadable answer")
+		return nil, ErrUnreadable
 	}
 	x := &Extraction{DocumentKind: oneOf(raw.DocumentKind, "bank_receipt", "invoice", "store_receipt", "other"), Instructions: raw.Instructions}
 	conf := func(c float64) float64 {
@@ -274,6 +344,44 @@ func Parse(text string) (*Extraction, error) {
 		}, v)
 		x.Reference = Field{Value: clean, Confidence: conf(raw.Reference.Confidence), Valid: len(clean) <= 40}
 	}
+	if iv := raw.Invoice; iv != nil && len(iv.Lines) > 0 {
+		num := func(v any) string {
+			sv := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(fmt.Sprint(v)), "%"))
+			if v == nil || sv == "" || sv == "<nil>" {
+				return ""
+			}
+			if f, ok := v.(float64); ok {
+				return decimal.NewFromFloat(f).String()
+			}
+			if d, err := normalize.Amount(sv); err == nil {
+				return d.String()
+			}
+			return ""
+		}
+		inv := &Invoice{Number: normalize.Digits(strings.TrimSpace(fmt.Sprint(iv.Number))), Subtotal: num(iv.Subtotal), Discount: num(iv.Discount),
+			Tax: num(iv.Tax), TaxRate: num(iv.TaxRate), Total: num(iv.Total)}
+		for _, l := range iv.Lines {
+			d, _ := l.Description.(string)
+			if len([]rune(d)) > 200 {
+				d = string([]rune(d)[:200])
+			}
+			inv.Lines = append(inv.Lines, InvoiceLine{Description: strings.TrimSpace(d), Quantity: num(l.Quantity), UnitPrice: num(l.UnitPrice),
+				Discount: num(l.Discount), Amount: num(l.Amount)})
+		}
+		if len(inv.Lines) > 60 {
+			inv.Lines = inv.Lines[:60]
+		}
+		inv.check(x.Amount.Value)
+		x.Invoice = inv
+		if !inv.Consistent && !contains(x.LowFields, "amount") {
+			x.LowFields = append(x.LowFields, "amount")
+		}
+		for _, l := range inv.Lines {
+			if injectionRe.MatchString(l.Description) {
+				x.Instructions = true
+			}
+		}
+	}
 	// Deterministic prompt-injection check on everything the model read.
 	for _, f := range []Field{x.Sender, x.Recipient, x.Merchant, x.Description, x.Bank, x.TransactionType} {
 		if injectionRe.MatchString(f.Value) {
@@ -306,7 +414,73 @@ func (x *Extraction) Summary() string {
 		"document_kind": x.DocumentKind, "amount": x.Amount.Value, "currency": x.Currency.Value, "date": x.Date.Value,
 		"sender": x.Sender.Value, "recipient": x.Recipient.Value, "merchant": x.Merchant.Value, "bank": x.Bank.Value,
 		"card": x.Card.Value, "reference": x.Reference.Value, "transaction_type": x.TransactionType.Value,
-		"description": x.Description.Value, "low_confidence_fields": x.LowFields,
+		"description": x.Description.Value, "low_confidence_fields": x.LowFields, "invoice": x.Invoice,
 	})
 	return string(b)
+}
+
+func contains(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+func dec(s string) decimal.Decimal {
+	d, err := decimal.NewFromString(s)
+	if err != nil {
+		return decimal.Zero
+	}
+	return d
+}
+
+// check verifies the invoice's printed arithmetic. A misread digit (a stamp over
+// the total, a blurred line) breaks one of these equalities, so the numbers are
+// shown for review instead of being trusted.
+func (inv *Invoice) check(amount string) {
+	inv.Problems = nil
+	sum := decimal.Zero
+	for i, l := range inv.Lines {
+		q, p, d, a := dec(l.Quantity), dec(l.UnitPrice), dec(l.Discount), dec(l.Amount)
+		if q.IsZero() || p.IsZero() {
+			inv.Problems = append(inv.Problems, fmt.Sprintf("line %d: quantity or unit price unreadable", i+1))
+			continue
+		}
+		net := q.Mul(p)
+		if l.Amount != "" && !a.Equal(net) && !a.Equal(net.Sub(d)) {
+			inv.Problems = append(inv.Problems, fmt.Sprintf("line %d: %s × %s ≠ %s", i+1, l.Quantity, l.UnitPrice, l.Amount))
+		}
+		sum = sum.Add(net.Sub(d))
+	}
+	if inv.Subtotal != "" && !sum.Equal(dec(inv.Subtotal)) && !sum.Add(sumDiscounts(inv)).Equal(dec(inv.Subtotal)) {
+		inv.Problems = append(inv.Problems, "lines sum "+sum.String()+" ≠ subtotal "+inv.Subtotal)
+	}
+	base := sum
+	if inv.Subtotal != "" {
+		base = dec(inv.Subtotal)
+	}
+	total := base.Sub(dec(inv.Discount)).Add(dec(inv.Tax))
+	if inv.Total != "" && !total.Equal(dec(inv.Total)) {
+		inv.Problems = append(inv.Problems, "subtotal − discount + tax = "+total.String()+" ≠ total "+inv.Total)
+	}
+	if inv.Total != "" && amount != "" && !dec(amount).Equal(dec(inv.Total)) {
+		inv.Problems = append(inv.Problems, "total "+inv.Total+" ≠ amount "+amount)
+	}
+	if inv.Tax != "" && inv.TaxRate != "" && dec(inv.Tax).IsPositive() {
+		want := base.Sub(dec(inv.Discount)).Mul(dec(inv.TaxRate)).Div(decimal.NewFromInt(100)).Round(0)
+		if want.Sub(dec(inv.Tax)).Abs().GreaterThan(decimal.NewFromInt(int64(len(inv.Lines)))) {
+			inv.Problems = append(inv.Problems, "tax "+inv.Tax+" ≠ "+inv.TaxRate+"% of the net "+want.String())
+		}
+	}
+	inv.Consistent = len(inv.Problems) == 0
+}
+
+func sumDiscounts(inv *Invoice) decimal.Decimal {
+	s := decimal.Zero
+	for _, l := range inv.Lines {
+		s = s.Add(dec(l.Discount))
+	}
+	return s
 }

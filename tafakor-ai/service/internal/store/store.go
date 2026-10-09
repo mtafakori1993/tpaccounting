@@ -44,16 +44,22 @@ type UserSettings struct {
 	AutoActions     []string          `json:"auto_actions"` // action types allowed automatically
 	Simulation      bool              `json:"simulation"`
 	VoiceReply      bool              `json:"voice_reply"`
-	UpdatedAt       time.Time         `json:"updated_at"`
+	// ExecPreference is how the assistant operates by default: "human_ui" (the real
+	// screen, visible pointer — the default) or "direct" (application services).
+	ExecPreference string `json:"exec_preference"`
+	// ExecSpeed is how fast the visible pointer works: human (default) | normal | instant.
+	ExecSpeed string    `json:"exec_speed"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // DefaultUserSettings are the safe defaults: human approval, small limits.
 func DefaultUserSettings(s Scope) UserSettings {
 	return UserSettings{
 		CompanyID: s.CompanyID, UserID: s.UserID,
-		MaxAmount:   map[string]string{"IRR": "100000000", "IRT": "10000000", "USD": "100", "EUR": "100"},
-		MaxPerDay:   10,
-		AutoActions: []string{"create_receipt", "create_expense"},
+		MaxAmount:      map[string]string{"IRR": "100000000", "IRT": "10000000", "USD": "100", "EUR": "100"},
+		MaxPerDay:      10,
+		AutoActions:    []string{"create_receipt", "create_expense"},
+		ExecPreference: "human_ui", ExecSpeed: "human",
 	}
 }
 
@@ -150,6 +156,8 @@ type Repository interface {
 
 	AppendAudit(ctx context.Context, e AuditEntry) error
 	ListAudit(ctx context.Context, s Scope, taskID string, limit int) ([]AuditEntry, error)
+	// ListAuditKind lists the scope's audit entries of one kind, newest first (metrics).
+	ListAuditKind(ctx context.Context, s Scope, kind string, limit int) ([]AuditEntry, error)
 	PurgeAudit(ctx context.Context, before time.Time) (int64, error)
 
 	GetConversation(ctx context.Context, s Scope, id string) (Conversation, error)

@@ -91,6 +91,9 @@ var (
 	ErrAuth            = errors.New("the AI provider rejected the API key")
 	ErrRejected        = errors.New("the AI provider rejected the request")
 	ErrCreditsInFlight = errors.New("the AI provider's credit is reserved by requests still settling")
+	// ErrNoCredit: the account's credit or the key's spending limit is used up (402, or
+	// 403 "Key limit exceeded"). Not a key or network problem: an administrator must add credit.
+	ErrNoCredit = errors.New("the AI provider's credit or key limit is exhausted")
 )
 
 type OpenRouter struct {
@@ -274,6 +277,12 @@ func (o *OpenRouter) once(ctx context.Context, payload []byte, onDelta func(stri
 			if len(msg) > 300 {
 				msg = msg[:300]
 			}
+			if lm := strings.ToLower(msg); (resp.StatusCode == 402 || resp.StatusCode == 403) && (strings.Contains(lm, "limit exceeded") || strings.Contains(lm, "credit")) {
+				return Result{}, false, fmt.Errorf("%w: %s", ErrNoCredit, msg)
+			} else if strings.Contains(lm, "rate-limited") || strings.Contains(lm, "rate limited") || strings.Contains(lm, "rate limit") {
+				// "temporarily rate-limited upstream" arrives with 5xx/4xx codes: retry with backoff
+				return Result{}, false, fmt.Errorf("%w: %s", ErrRateLimited, msg)
+			}
 			return Result{}, false, fmt.Errorf("%w: %s", err, msg)
 		}
 		return Result{}, false, err
@@ -310,6 +319,9 @@ func (o *OpenRouter) once(ctx context.Context, payload []byte, onDelta func(stri
 			continue
 		}
 		if chunk.Error != nil {
+			if lm := strings.ToLower(chunk.Error.Message); strings.Contains(lm, "rate-limited") || strings.Contains(lm, "rate limit") {
+				return res, started, fmt.Errorf("%w: %s", ErrRateLimited, chunk.Error.Message)
+			}
 			return res, started, fmt.Errorf("%w: %s", ErrUnavailable, chunk.Error.Message)
 		}
 		if chunk.Model != "" {
@@ -348,6 +360,8 @@ func PlainMessage(err error) string {
 		return "The AI service is busy right now. Nothing was registered. Please try again in a minute."
 	case errors.Is(err, context.DeadlineExceeded):
 		return "The AI service took too long to answer. Nothing was registered."
+	case errors.Is(err, ErrNoCredit):
+		return "The AI service's credit (or this key's spending limit) is used up. Nothing was registered. Ask your administrator to add credit."
 	case errors.Is(err, ErrCreditsInFlight):
 		return "The AI service's credit is almost used up (OpenRouter account or key limit). Nothing was registered. Ask your administrator to add credit."
 	case errors.Is(err, ErrRejected):
@@ -355,12 +369,16 @@ func PlainMessage(err error) string {
 	case errors.Is(err, ErrUnavailable):
 		return "The AI service is unavailable right now. Nothing was registered."
 	}
-	return "Something went wrong while talking to the AI service. Nothing was registered."
+	return "The AI service returned an unexpected error. Nothing was registered."
 }
 
 func backoff(attempt int, err error) time.Duration {
 	if errors.Is(err, ErrCreditsInFlight) {
 		return time.Duration(attempt) * 6 * time.Second
+	}
+	if errors.Is(err, ErrRateLimited) {
+		// upstream rate limits clear in seconds, not milliseconds
+		return time.Duration(attempt) * 4 * time.Second
 	}
 	return time.Duration(attempt*attempt) * 700 * time.Millisecond
 }

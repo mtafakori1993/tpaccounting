@@ -146,6 +146,21 @@ docker compose -f tafakor-ai/docker-compose.ai.yml exec tafakor-ai sh -c 'cd /da
 (stop the service for a byte-exact copy, or copy the db with `sqlite3 .backup` if available). Retention: audit rows,
 expired tokens, idempotency keys and files older than `AI_AUDIT_RETENTION_DAYS` are purged daily.
 
+## Reliability (audit 2026-10-08)
+Every request is classified into a **business domain before any tool** (`internal/intent`: accounting · payroll · crm ·
+configuration · documents · memory), from the user's own words in context — «کمک هزینه سفر را به اجزای حقوق اضافه کن» is payroll
+configuration, never an expense. Exactly-classified requests run **deterministic skills** that build the payload from the
+application's state (salary components, an employee's component amount, transfers, purchase invoices from documents); everything
+else goes through the planner, whose output is checked: tool/domain compatibility, schema (only unconditional required fields),
+dates (Jalali → Gregorian), amounts (unit-aware), duplicate and same-named entities, password placeholders.
+Execution never sends a write twice by accident (in-flight marker + reconciliation of uncertain outcomes; «دوباره امتحان کن»
+re-offers the same step), and verifies every written value by reading the record back. A screen task resumed after a reload first
+looks for a record saved before the interruption. Trace of any task: `GET /ai-api/tasks/{id}/trace`. Decisions D47–D58.
+
+Live tests: `widget/scripts/e2e-audit.mjs` (scenario matrix through the real widget, real model; `--repeat=N`),
+`test/fault_scenarios.py` (failure injection through `test/fault_proxy.py`), `test/stress_payroll.py`, fixtures in
+`test/fixtures/{invoices,receipts,checks}` (`generate.py`), audit dataset `test/seed_audit.py`. Report: `RELIABILITY_AUDIT.md`.
+
 ## Tests
 ```sh
 cd tafakor-ai/service && go test ./...                      # unit + integration (fake accounting API, scripted model)
@@ -165,3 +180,10 @@ rm -rf tafakor-ai                                            # and remove AI_SER
 ```
 `verify-removal.sh` checks this procedure on a scratch worktree: the result is identical to `main`, the backend builds
 and its server tests pass, and the frontend builds.
+
+## Execution modes (D43)
+
+By default the assistant works like an employee: it opens the real screen, moves a visible pointer, clicks and types, saves
+and reads the result back. Say «مستقیم انجام بده» / "do it directly" (or set *Directly through the application* in Settings →
+"How the assistant works") to run through the application's services instead; say «با موس انجام بده» to force the screen.
+"Show me on screen" remains a separate preview that fills the form and does not save.

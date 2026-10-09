@@ -1,0 +1,234 @@
+package main
+
+// Capability audit (D42): application capabilities vs AI capabilities, generated with
+// the catalog so a regression shows up as a changed report (and fails the catalog
+// coverage test). Every operation gets one status:
+//
+//	FULLY_SUPPORTED         executable by the assistant; reads, or writes whose real form
+//	                        (if the app has one) can be opened and pre-filled completely
+//	PARTIALLY_SUPPORTED     executable; the real form opens but some values must be typed
+//	                        by hand (line items, fields without a labelled control)
+//	MISSING_UI_CAPABILITY   executable; the app has a screen for it but the assistant
+//	                        cannot open/pre-fill that screen yet
+//	APPLICATION_LIMITATION  executable through the service; the app itself has no
+//	                        screen for it (nothing to show on screen)
+//	UNSAFE_TO_AUTOMATE      not offered: session/credential operations
+//
+// Policy is reported separately from capability (D40): confirmation and approval
+// never make an operation "unsupported".
+
+import (
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+)
+
+type AuditRow struct {
+	ID          string   `json:"id"`
+	Module      string   `json:"module"`
+	Kind        string   `json:"kind"`
+	Endpoint    string   `json:"endpoint"`
+	Permission  string   `json:"permission"`
+	AppUI       bool     `json:"app_ui"`
+	AITool      bool     `json:"ai_tool"`
+	Policy      string   `json:"policy"` // DIRECT_WHEN_REQUESTED | CONFIRM | APPROVAL_REQUIRED | READ | NOT_OFFERED
+	Posts       string   `json:"posts"`  // no | always | when <fields>
+	UIPreview   string   `json:"ui_preview"`
+	UIGaps      []string `json:"ui_gaps,omitempty"`
+	Status      string   `json:"status"`
+	Reason      string   `json:"reason,omitempty"`
+	OutputsData bool     `json:"outputs_entity"`
+}
+
+func auditOf(o Operation) AuditRow {
+	r := AuditRow{ID: o.ID, Module: o.Module, Kind: o.Kind, Endpoint: o.Method + " " + o.Path, Permission: o.Permission,
+		AppUI: o.UIExists, AITool: o.Classification != "NOT_SUPPORTED_BY_AI",
+		OutputsData: o.Kind == "create" || o.Kind == "update" || o.Kind == "workflow"}
+	if r.Permission == "" {
+		r.Permission = "signed in"
+	}
+	switch {
+	case !o.PostsEntries:
+		r.Posts = "no"
+	case o.PostingAlways:
+		r.Posts = "always"
+	default:
+		r.Posts = "when " + strings.Join(o.PostingTriggers, "/")
+	}
+	routine := o.Classification == "REQUIRES_USER_CONFIRMATION" && !o.Critical && !o.FinancialDocument && !o.PostingAlways &&
+		(o.Kind == "create" || o.Kind == "update")
+	switch {
+	case !r.AITool:
+		r.Policy = "NOT_OFFERED"
+	case o.Classification == "READ_ONLY":
+		r.Policy = "READ"
+	case o.Classification == "REQUIRES_APPROVAL":
+		r.Policy = "APPROVAL_REQUIRED"
+	case routine && len(o.PostingTriggers) > 0:
+		r.Policy = "DIRECT_WHEN_REQUESTED (confirm if " + strings.Join(o.PostingTriggers, "/") + " set)"
+	case routine:
+		r.Policy = "DIRECT_WHEN_REQUESTED"
+	default:
+		r.Policy = "CONFIRM"
+	}
+	writes := o.Kind == "create" || o.Kind == "update"
+	switch {
+	case !writes:
+		r.UIPreview = "n/a"
+	case o.UI == nil && o.UIExists:
+		r.UIPreview = "missing"
+	case o.UI == nil:
+		r.UIPreview = "no app screen"
+	default:
+		r.UIPreview = "yes"
+		if len(o.UI.Lines) > 0 || hasLineField(o) {
+			r.UIGaps = append(r.UIGaps, "line items typed by hand")
+		}
+		for _, m := range o.UI.Missing {
+			if !lineName(o, m) && m != "post" {
+				r.UIGaps = append(r.UIGaps, "no control: "+m)
+			}
+		}
+		if len(r.UIGaps) > 0 {
+			r.UIPreview = "partial"
+		}
+	}
+	switch {
+	case !r.AITool:
+		r.Status, r.Reason = "UNSAFE_TO_AUTOMATE", "session/credential operation (sign-in, sign-out, setup, own password)"
+	case r.UIPreview == "missing":
+		r.Status, r.Reason = "MISSING_UI_CAPABILITY", uiMissingReason(o)
+	case r.UIPreview == "partial":
+		r.Status, r.Reason = "PARTIALLY_SUPPORTED", strings.Join(r.UIGaps, "; ")
+	case r.UIPreview == "no app screen":
+		r.Status, r.Reason = "APPLICATION_LIMITATION", "the application has no screen for this; the assistant runs it through the service"
+	default:
+		r.Status = "FULLY_SUPPORTED"
+	}
+	return r
+}
+
+func hasLineField(o Operation) bool {
+	for _, f := range o.Body {
+		if (f.Name == "items" || f.Name == "lines") && len(f.Fields) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func lineName(o Operation, name string) bool {
+	for _, f := range o.Body {
+		if f.Name == name && len(f.Fields) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func uiMissingReason(o Operation) string {
+	return "the app's form for this (" + strings.Join(o.UIEntryPoints, ", ") + ") is not discoverable: no labelled controls, a row-menu or grid editor, or an upload"
+}
+
+// coverage groups the audit by module and capability column.
+func coverageMarkdown(rows []AuditRow) string {
+	var b strings.Builder
+	counts := map[string]int{}
+	for _, r := range rows {
+		counts[r.Status]++
+	}
+	b.WriteString("# Capability audit (generated)\n\n")
+	b.WriteString("Generated by `tafakor-ai/service/cmd/capmap` together with the catalog — do not edit by hand. ")
+	b.WriteString("Capability (can the app do it, can the assistant do it) is reported separately from policy (does it ask first).\n\n")
+	fmt.Fprintf(&b, "**%d operations.** ", len(rows))
+	var keys []string
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString(" · ")
+		}
+		fmt.Fprintf(&b, "%s: %d", k, counts[k])
+	}
+	b.WriteString("\n\n## Coverage by module\n\n")
+	b.WriteString("✓ the assistant can do it (and show it on screen where the app has a form) · ⚠ partial (see gaps) · ✗ app screen not drivable · — no such operation · N/S app has no screen\n\n")
+	b.WriteString("| Module | CREATE | READ | UPDATE | DELETE/VOID | WORKFLOW | REPORT/EXPORT | UI_PREVIEW create | UI_PREVIEW update |\n|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|\n")
+	mods := map[string][]AuditRow{}
+	for _, r := range rows {
+		mods[r.Module] = append(mods[r.Module], r)
+	}
+	var names []string
+	for m := range mods {
+		names = append(names, m)
+	}
+	sort.Strings(names)
+	cell := func(rs []AuditRow, kinds ...string) string {
+		has := false
+		for _, r := range rs {
+			for _, k := range kinds {
+				if r.Kind == k {
+					has = true
+					if !r.AITool {
+						return "✗"
+					}
+				}
+			}
+		}
+		if !has {
+			return "—"
+		}
+		return "✓"
+	}
+	ui := func(rs []AuditRow, kind string) string {
+		out := "—"
+		for _, r := range rs {
+			if r.Kind != kind || !r.AITool {
+				continue
+			}
+			switch r.UIPreview {
+			case "missing":
+				return "✗"
+			case "partial":
+				out = "⚠"
+			case "yes":
+				if out == "—" || out == "N/S" {
+					out = "✓"
+				}
+			case "no app screen":
+				if out == "—" {
+					out = "N/S"
+				}
+			}
+		}
+		return out
+	}
+	for _, m := range names {
+		rs := mods[m]
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", m, cell(rs, "create"), cell(rs, "read"), cell(rs, "update"),
+			cell(rs, "delete"), cell(rs, "workflow"), cell(rs, "export", "compute"), ui(rs, "create"), ui(rs, "update"))
+	}
+	b.WriteString("\n## Gap report\n\nEvery operation that is not FULLY_SUPPORTED, with the reason.\n\n")
+	b.WriteString("| Capability | Endpoint | Permission | Policy | Posts entries | Status | Reason |\n|---|---|---|---|---|---|---|\n")
+	for _, r := range rows {
+		if r.Status == "FULLY_SUPPORTED" {
+			continue
+		}
+		fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s | %s | %s |\n", r.ID, r.Endpoint, r.Permission, r.Policy, r.Posts, r.Status, r.Reason)
+	}
+	b.WriteString("\n## Policy (all operations)\n\n| Capability | Kind | Policy | Posts entries |\n|---|---|---|---|\n")
+	for _, r := range rows {
+		if r.Policy == "READ" {
+			continue
+		}
+		fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", r.ID, r.Kind, r.Policy, r.Posts)
+	}
+	return b.String()
+}
+
+func auditJSON(rows []AuditRow) []byte {
+	b, _ := json.MarshalIndent(rows, "", "  ")
+	return b
+}

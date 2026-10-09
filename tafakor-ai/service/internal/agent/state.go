@@ -12,6 +12,7 @@ import (
 
 	"github.com/tafakorpardazan/tafakor-ai/internal/classify"
 	"github.com/tafakorpardazan/tafakor-ai/internal/extract"
+	"github.com/tafakorpardazan/tafakor-ai/internal/intent"
 	"github.com/tafakorpardazan/tafakor-ai/internal/learning"
 	"github.com/tafakorpardazan/tafakor-ai/internal/policy"
 )
@@ -52,20 +53,27 @@ type Result struct {
 	Status        string   `json:"status"`
 	Route         string   `json:"route"`
 	Attachments   []string `json:"attachments,omitempty"`
-	Mode          string   `json:"mode"` // human | auto
-	Verified      bool     `json:"verified"`
-	Mismatches    []string `json:"mismatches,omitempty"`
-	BudgetWarning bool     `json:"budget_warning,omitempty"`
-	Undone        bool     `json:"undone,omitempty"`
-	PDF           string   `json:"pdf,omitempty"`
+	// Files are the user's original files, attached to this record in the application.
+	Files         []AttachedFile `json:"files,omitempty"`
+	Mode          string         `json:"mode"` // human | auto
+	Verified      bool           `json:"verified"`
+	Mismatches    []string       `json:"mismatches,omitempty"`
+	BudgetWarning bool           `json:"budget_warning,omitempty"`
+	Undone        bool           `json:"undone,omitempty"`
+	PDF           string         `json:"pdf,omitempty"`
+	// Via is how it was carried out: human_ui (operated on screen) | direct (application service).
+	Via string `json:"via,omitempty"`
 }
 
 type State struct {
-	Stage          string                   `json:"stage"`
-	Lang           string                   `json:"lang"`
-	UserText       string                   `json:"user_text"`
-	Uploads        []Upload                 `json:"uploads,omitempty"`
-	Extractions    []*extract.Extraction    `json:"extractions,omitempty"`
+	Stage       string                `json:"stage"`
+	Lang        string                `json:"lang"`
+	UserText    string                `json:"user_text"`
+	Uploads     []Upload              `json:"uploads,omitempty"`
+	Extractions []*extract.Extraction `json:"extractions,omitempty"`
+	// UploadsHandled: the uploads were attached to the registered record (or the user was
+	// told why they could not be); they are not carried to a later request.
+	UploadsHandled bool                     `json:"uploads_handled,omitempty"`
 	Interp         *classify.Interpretation `json:"interpretation,omitempty"`
 	Answers        map[string]string        `json:"answers,omitempty"`
 	Proposal       *classify.Proposal       `json:"proposal,omitempty"`
@@ -76,17 +84,31 @@ type State struct {
 	Offers         []learning.Offer         `json:"offers,omitempty"`
 	Result         *Result                  `json:"result,omitempty"`
 	AskThisTime    bool                     `json:"ask_this_time,omitempty"`
-	ExecMode       string                   `json:"exec_mode,omitempty"` // api | ui
-	Approved       bool                     `json:"approved,omitempty"`
-	ApprovedBy     int64                    `json:"approved_by,omitempty"`
-	Overrides      map[string]string        `json:"overrides,omitempty"` // description/reference edits
-	Message        string                   `json:"message,omitempty"`
-	UndoOf         string                   `json:"undo_of,omitempty"`
-	Target         *Target                  `json:"target,omitempty"`
-	Frame          *classify.Frame          `json:"frame,omitempty"` // structured state of the operation (merged across turns)
-	ConversationID string                   `json:"conversation_id,omitempty"`
-	Plan           *PlanState               `json:"plan,omitempty"` // capability-driven multi-step operation
-	Model          string                   `json:"model,omitempty"`
+	// ExecMode is HOW the operation is carried out: "human_ui" (the real screen, visible
+	// pointer; the default) or "direct" (application services). See package execmode.
+	ExecMode   string `json:"exec_mode,omitempty"`
+	NoUI       bool   `json:"no_ui,omitempty"`       // the client cannot operate the screen
+	ExecSource string `json:"exec_source,omitempty"` // which rule chose it: request | explicit | preference | default
+	// UIStep is the plan step currently being operated on screen; UIKind names a
+	// screen-only task (open | pdf | navigate | undo) whose result needs no verification of a record.
+	UIStep  string `json:"ui_step,omitempty"`
+	UIKind  string `json:"ui_kind,omitempty"`
+	UIRoute string `json:"ui_route,omitempty"`
+	// UIBaseline: the highest record id that existed before a create was operated on screen.
+	UIBaseline     int64             `json:"ui_baseline,omitempty"`
+	Approved       bool              `json:"approved,omitempty"`
+	ApprovedBy     int64             `json:"approved_by,omitempty"`
+	Overrides      map[string]string `json:"overrides,omitempty"` // description/reference edits
+	Message        string            `json:"message,omitempty"`
+	UndoOf         string            `json:"undo_of,omitempty"`
+	Target         *Target           `json:"target,omitempty"`
+	Frame          *classify.Frame   `json:"frame,omitempty"` // structured state of the operation (merged across turns)
+	ConversationID string            `json:"conversation_id,omitempty"`
+	Plan           *PlanState        `json:"plan,omitempty"` // capability-driven multi-step operation
+	// Intent is the pre-tool decision (domain, operation, memory instruction) made
+	// from the user's own words before any tool was chosen (package intent).
+	Intent *intent.Decision `json:"intent,omitempty"`
+	Model  string           `json:"model,omitempty"`
 
 	// Execution instruction, from the user's own words. PendingDirect persists across
 	// the follow-up turns of one operation so multi-turn fills stay direct.
@@ -95,6 +117,13 @@ type State struct {
 	PendingDirect bool `json:"pending_direct,omitempty"`
 	// Active is the document this task is about (set when a reference was resolved).
 	Active *Artifact `json:"active,omitempty"`
+	// Exec is the persisted execution state (selected executor, attempts, failure code):
+	// a repeated request never blindly repeats a failed path (D59).
+	Exec *ExecRecord `json:"exec,omitempty"`
+	// RequestID is the user request this task serves (stable across a fresh-context
+	// retry); ContextResets how often that request was moved to a fresh context (D62).
+	RequestID     string `json:"request_id,omitempty"`
+	ContextResets int    `json:"context_resets,omitempty"`
 }
 
 // Target is an existing document a task acts on (undo, attach, pdf).

@@ -49,6 +49,40 @@ type Operation struct {
 	UIEntryPoints  []string `json:"ui_entry_points,omitempty"`
 	Critical       bool     `json:"critical,omitempty"` // security/configuration/period control: approval card shows a strong warning
 	Notes          []string `json:"notes,omitempty"`
+	// From the handler's call graph (cmd/capmap posting.go).
+	PostsEntries      bool     `json:"posts_entries,omitempty"`
+	PostingAlways     bool     `json:"posting_always,omitempty"`
+	PostingTriggers   []string `json:"posting_triggers,omitempty"` // request fields that make the call post
+	FinancialDocument bool     `json:"financial_document,omitempty"`
+	// UI is the operation's real form (cmd/capmap uiforms.go), when the app has one.
+	UI *UIForm `json:"ui,omitempty"`
+}
+
+// UIForm is the application's real form for an operation, discovered from the
+// frontend source by cmd/capmap (uiforms.go, D41). Tags are the data-ai-* attributes
+// the app renders from i18n keys.
+type UIForm struct {
+	Route   string             `json:"route"`             // route template: ":id", ":side", ":kind" come from the call
+	Open    []UIOpen           `json:"open,omitempty"`    // controls that open the form (variants: Field=Value)
+	Row     bool               `json:"row,omitempty"`     // edit form opened by clicking the record's table row
+	Dialogs []string           `json:"dialogs,omitempty"` // dialog tags ("*" = the dialog that opened); empty = a page form
+	Fields  map[string]UIField `json:"fields"`
+	Lines   map[string]UIField `json:"lines,omitempty"`   // line-item controls (not pre-filled)
+	Missing []string           `json:"missing,omitempty"` // writable request fields the form has no control for
+	File    string             `json:"file"`
+}
+
+type UIField struct {
+	Tag     string   `json:"tag"`
+	Alts    []string `json:"alts,omitempty"` // tags of a ternary label (customer/supplier): the variant decides
+	Tab     string   `json:"tab,omitempty"`  // shown only on this tab of the form (data-ai-tab): select it first
+	Control string   `json:"control"`        // fill | select | combo | date | check
+}
+
+type UIOpen struct {
+	Tag   string `json:"tag"`
+	Field string `json:"field,omitempty"`
+	Value string `json:"value,omitempty"`
 }
 
 // Classifications.
@@ -164,10 +198,15 @@ func (o *Operation) Line() string {
 		b.WriteString(" ?" + strings.Join(o.QueryParams, ","))
 	}
 	if fs := o.InputFields(); len(fs) > 0 {
+		req, _ := o.requiredAndOptional()
+		isReq := map[string]bool{}
+		for _, r := range req {
+			isReq[r] = true
+		}
 		var names []string
 		for _, f := range fs {
 			n := f.Name
-			if f.Required {
+			if isReq[f.Name] {
 				n += "*"
 			}
 			if len(f.Enum) > 0 && len(f.Enum) <= 8 {

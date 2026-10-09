@@ -1,6 +1,8 @@
 package normalize
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -152,5 +154,18 @@ func TestReplaceNumberWords(t *testing.T) {
 		if got := ReplaceNumberWords(in); got != want {
 			t.Errorf("ReplaceNumberWords(%q)=%q want %q", in, got, want)
 		}
+	}
+}
+
+func TestMaskJSONKeepsAmountsAndValidity(t *testing.T) {
+	in := []byte(`{"brackets":[{"upto":1000000000,"rate":35}],"amount":"1200000000","card":"6037991234567890","notes":"کارت 6037991234567890","iban":"IR123456789012345678901234"}`)
+	out := MaskJSON(in)
+	var v map[string]any
+	if err := json.Unmarshal(out, &v); err != nil {
+		t.Fatalf("invalid JSON: %s", out)
+	}
+	s := string(out)
+	if !strings.Contains(s, "1000000000") || !strings.Contains(s, `"1200000000"`) || strings.Contains(s, "6037991234567890") || strings.Contains(s, "IR123456789012345678901234") {
+		t.Fatalf("masking: %s", s)
 	}
 }

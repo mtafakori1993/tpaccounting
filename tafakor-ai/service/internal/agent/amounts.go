@@ -32,15 +32,18 @@ func allowedAmounts(st *State, p *PlanState, baseIRR bool) (amounts []decimal.De
 	}
 	for _, t := range p.UserTexts {
 		text := normalize.ReplaceNumberWords(normalize.Digits(t))
-		toman := strings.Contains(text, "تومان") || strings.Contains(text, "تومن") || strings.Contains(strings.ToLower(text), "toman")
-		for _, m := range numRe.FindAllString(text, -1) {
-			d, err := normalize.Amount(m)
+		for _, loc := range numRe.FindAllStringIndex(text, -1) {
+			d, err := normalize.Amount(text[loc[0]:loc[1]])
 			if err != nil {
 				continue
 			}
-			add(d)
-			if toman && baseIRR {
+			// the unit written right after THIS number decides it (audit 2026-10-08:
+			// «۵ میلیون تومان» passed as 5,000,000 rial because the raw number was
+			// allowed next to its ×10)
+			if numberUnit(text[loc[1]:]) == "IRT" && baseIRR {
 				add(d.Mul(decimal.NewFromInt(10)))
+			} else {
+				add(d)
 			}
 			if d.LessThan(decimal.NewFromInt(100000)) {
 				quantities = append(quantities, d)
@@ -168,7 +171,9 @@ func checkAmounts(st *State, p *PlanState, steps []PlanStep, baseIRR bool) strin
 	}
 	sort.Strings(stated)
 	return "AMOUNT CHECK FAILED: " + strings.Join(bad, ", ") + " is not an amount the user stated or the application returned. " +
-		"Amounts available (base currency): " + strings.Join(stated, ", ") + ". Use the exact amount (count the zeros)."
+		"The user's own amounts, already in the base currency: " + strings.Join(userAmounts(p, baseIRR), ", ") +
+		" — use these exactly (do not ask the user to choose: the unit they wrote decides). Other amounts the application returned: " +
+		strings.Join(stated, ", ") + "."
 }
 
 // stepAmounts lists the money fields of a step ("amount: 150,000,000") so the approval
@@ -240,4 +245,45 @@ func groupDigits(d decimal.Decimal) string {
 		return "-" + b.String() + frac
 	}
 	return b.String() + frac
+}
+
+// numberUnit is the currency word that directly follows a number ("IRT" for
+// تومان, "IRR" for ریال), or "" when none does.
+func numberUnit(after string) string {
+	w := strings.Fields(after)
+	if len(w) == 0 {
+		return ""
+	}
+	first := strings.ToLower(strings.Trim(w[0], ".,،؛:()«»"))
+	switch first {
+	case "تومان", "تومن", "تومانی", "تومنی", "toman", "tomans", "هزارتومان":
+		return "IRT"
+	case "ریال", "ریالی", "rial", "rials", "irr":
+		return "IRR"
+	}
+	return ""
+}
+
+// userAmounts lists the amounts in the user's words converted to the base currency,
+// labelled with what was written («150000000 (= 15000000 تومان)»).
+func userAmounts(p *PlanState, baseIRR bool) []string {
+	var out []string
+	for _, t := range p.UserTexts {
+		text := normalize.ReplaceNumberWords(normalize.Digits(t))
+		for _, loc := range numRe.FindAllStringIndex(text, -1) {
+			d, err := normalize.Amount(text[loc[0]:loc[1]])
+			if err != nil || d.LessThan(decimal.NewFromInt(1000)) {
+				continue
+			}
+			if numberUnit(text[loc[1]:]) == "IRT" && baseIRR {
+				out = append(out, d.Mul(decimal.NewFromInt(10)).String()+" (= "+d.String()+" تومان)")
+			} else {
+				out = append(out, d.String())
+			}
+		}
+	}
+	if len(out) == 0 {
+		return []string{"none"}
+	}
+	return out
 }

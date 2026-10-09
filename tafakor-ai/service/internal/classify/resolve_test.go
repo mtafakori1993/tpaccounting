@@ -249,3 +249,76 @@ func TestAdvanceUsesCustomerAdvancesAccount(t *testing.T) {
 		t.Fatalf("advance must credit the advances account with the party: %+v", p.Tx)
 	}
 }
+
+// Live finding (A3): the user typed the full name «شرکت داده‌پردازان سپهر», the model
+// shortened it, and the resolver asked "did you mean «شرکت داده‌پردازان سپهر»?".
+func TestPartyNamedExactlyInTheUsersWordsIsNotAsked(t *testing.T) {
+	it := &Interpretation{Intent: "register", UserRequestedRegistration: true, Event: Event{Type: EvCustomerReceipt, Amount: "120000000", Currency: "IRR",
+		Date: "2025-10-08", Counterparty: "داده پردازان سپهر", CounterpartyRole: "customer", PaidBy: "bank", TreasuryHint: "بانک ملت جاری"}}
+	c := newCtx(t, it, nil)
+	c.Parties = append(c.Parties, tools.Party{ID: 104, Code: "0022", Name: "شرکت داده‌پردازان سپهر", Kind: "company", IsCustomer: true, IsActive: true})
+	c.UserText = "۱۲ میلیون تومان از شرکت داده‌پردازان سپهر دریافت کردیم و به بانک ملت جاری واریز شد"
+	p, err := Resolve(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Question != nil && p.Question.Field == "party" {
+		t.Fatalf("no party question for a name the user typed exactly: %+v", p.Question)
+	}
+}
+
+// Live finding (A4): "chat" + an explicitly requested complete transfer was answered
+// with "I'll register it" and nothing was registered.
+func TestChatWithACompleteRequestedEventIsARegistration(t *testing.T) {
+	it, err := ParseInterpretation(`{"intent":"chat","user_requested_registration":true,"reply":"باشه، ثبت می‌کنم",
+	 "event":{"type":"transfer","amount":"5000000","currency":"IRT","treasury_hint":"صندوق مرکزی"}}`, "۵ میلیون تومان از صندوق مرکزی به بانک ملت جاری منتقل کردیم")
+	if err != nil || it.Intent != "register" || it.Reply != "" {
+		t.Fatalf("%v %+v", err, it)
+	}
+	// a real chat stays chat
+	it, _ = ParseInterpretation(`{"intent":"chat","user_requested_registration":false,"reply":"سلام"}`, "سلام")
+	if it.Intent != "chat" {
+		t.Fatal("greeting changed")
+	}
+}
+
+// A5 root cause: an expense paid to a named registered party dropped the party; with two
+// parties of that name nothing was asked. The payee is now resolved like any party.
+func TestExpensePayeeIsResolvedNotDropped(t *testing.T) {
+	ev := func(name string) *Interpretation {
+		return &Interpretation{Intent: "register", UserRequestedRegistration: true, Confidence: 0.9,
+			Event: Event{Type: EvExpense, Subject: "پرداخت", Counterparty: name, CounterpartyRole: "supplier", CategoryID: 10, Amount: "30000000", Currency: "IRR", PaidBy: "bank"}}
+	}
+	// two SUPPLIERS with the same name (the A5 data) → asked, never guessed
+	c := newCtx(t, ev("ایرانیکارت"), nil)
+	c.Parties = append(c.Parties, tools.Party{ID: 107, Code: "0005", Name: "ایرانیکارت", IsSupplier: true, IsActive: true},
+		tools.Party{ID: 108, Code: "0006", Name: "ایرانیکارت", IsSupplier: true, IsActive: true})
+	c.Answers["source_account"] = "2"
+	p, _ := Resolve(context.Background(), c)
+	if p.Question == nil || p.Question.Field != "payee" || len(p.Question.Options) < 2 || p.Expense != nil {
+		t.Fatalf("duplicate payee must be asked: %+v", p.Question)
+	}
+	c.Answers["payee"] = "108"
+	p, _ = Resolve(context.Background(), c)
+	if p.Expense == nil || p.Expense.PartyID == nil || *p.Expense.PartyID != 108 || p.Expense.PaymentMethod != "bank" {
+		t.Fatalf("chosen payee not linked: %+v", p.Expense)
+	}
+	// the role decides between a same-named supplier and customer (existing rule)
+	c = newCtx(t, ev("علی رضایی"), nil)
+	c.Answers["source_account"] = "2"
+	if p, _ = Resolve(context.Background(), c); p.Expense == nil || p.Expense.PartyID == nil || *p.Expense.PartyID != 102 {
+		t.Fatalf("supplier role: %+v %+v", p.Expense, p.Question)
+	}
+	// one exact registered party → linked without a question
+	c = newCtx(t, ev("محمد تفکری"), nil)
+	c.Answers["source_account"] = "2"
+	if p, _ = Resolve(context.Background(), c); p.Expense == nil || p.Expense.PartyID == nil || *p.Expense.PartyID != 100 {
+		t.Fatalf("exact payee not linked: %+v %+v", p.Expense, p.Question)
+	}
+	// an unregistered vendor asks nothing and links nothing
+	c = newCtx(t, ev("سوپرمارکت محله"), nil)
+	c.Answers["source_account"] = "2"
+	if p, _ = Resolve(context.Background(), c); p.Expense == nil || p.Expense.PartyID != nil {
+		t.Fatalf("unregistered vendor: %+v %+v", p.Expense, p.Question)
+	}
+}

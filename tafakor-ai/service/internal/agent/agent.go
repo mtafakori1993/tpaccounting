@@ -19,9 +19,12 @@ import (
 	"github.com/tafakorpardazan/tafakor-ai/internal/approval"
 	"github.com/tafakorpardazan/tafakor-ai/internal/catalog"
 	"github.com/tafakorpardazan/tafakor-ai/internal/classify"
+	"github.com/tafakorpardazan/tafakor-ai/internal/ctxconflict"
 	"github.com/tafakorpardazan/tafakor-ai/internal/duplicates"
+	"github.com/tafakorpardazan/tafakor-ai/internal/execmode"
 	"github.com/tafakorpardazan/tafakor-ai/internal/extract"
 	"github.com/tafakorpardazan/tafakor-ai/internal/files"
+	"github.com/tafakorpardazan/tafakor-ai/internal/intent"
 	"github.com/tafakorpardazan/tafakor-ai/internal/learning"
 	"github.com/tafakorpardazan/tafakor-ai/internal/normalize"
 	"github.com/tafakorpardazan/tafakor-ai/internal/policy"
@@ -109,7 +112,7 @@ func (a *Agent) audit(ctx context.Context, u *User, taskID, kind string, data an
 	if err != nil {
 		b = []byte(`{}`)
 	}
-	b = []byte(normalize.MaskSensitive(string(b)))
+	b = normalize.MaskJSON(b)
 	if err := a.Store.AppendAudit(ctx, store.AuditEntry{CompanyID: u.Scope.CompanyID, UserID: u.Scope.UserID, TaskID: taskID, Kind: kind, Data: b}); err != nil {
 		slog.Error("audit", "err", err)
 	}
@@ -149,21 +152,57 @@ type StartRequest struct {
 	Message     string   `json:"message"`
 	Uploads     []string `json:"uploads"`
 	AskThisTime bool     `json:"ask_this_time"`
-	ExecMode    string   `json:"exec_mode"`  // ui (default when the widget can drive the page) | api
-	Transcript  bool     `json:"transcript"` // the text came from a (user-confirmed) voice transcript
+	ExecMode    string   `json:"exec_mode"` // ui (default when the widget can drive the page) | api
+	// UICapable: whether the client can drive the page (the widget sends true). When false
+	// the screen cannot be operated and HUMAN_UI reports that instead of pretending.
+	UICapable  *bool `json:"ui_capable"`
+	Transcript bool  `json:"transcript"` // the text came from a (user-confirmed) voice transcript
 	// ConversationID continues an existing conversation (empty = new conversation).
 	ConversationID string `json:"conversation_id"`
+	// RequestID identifies this user request across contexts (a fresh-context retry keeps
+	// it). Generated when the client does not send one.
+	RequestID string `json:"request_id"`
 	// pre is an interpretation already made for this message (explicit change of subject).
 	pre *classify.Interpretation
+	// resets: how many times this request was already moved to a fresh context (max 1).
+	resets int
 }
 
 // Start handles one user message. Inside an open operation it is a follow-up that is merged
 // into the existing state; otherwise a new operation starts — with the conversation history.
 func (a *Agent) Start(ctx context.Context, u *User, req StartRequest, e Emitter) string {
 	var taskID string
+	if req.RequestID == "" {
+		req.RequestID = newRequestID()
+	}
+	e.Emit("request", map[string]any{"request_id": req.RequestID})
 	a.withConversation(ctx, u, req.ConversationID, e, func(c *conversation, e Emitter) {
 		text := strings.TrimSpace(req.Message)
+		// history keeps the trimmed text (the prompts drop "the current message" by it); the
+		// raw request is what a fresh context re-submits, byte for byte (req.Message)
 		c.add(ConvMessage{Role: "user", Kind: "text", Text: text})
+		// Is this conversation's state safe for this request? (D62, deterministic)
+		res, oldT, oldSt := a.checkContext(ctx, u, c, req, text)
+		if res.Action == ctxconflict.NewContext {
+			taskID = a.freshContext(ctx, u, c, req, res, oldT, oldSt, e)
+			return
+		}
+		defer func() {
+			a.audit(ctx, u, reqKey(req.RequestID), "request_attempt", map[string]any{"request_id": req.RequestID, "attempt": req.resets + 1,
+				"conversation_id": c.row.ID, "task_id": taskID, "action": ctxconflict.Continue, "reasons": res.Reasons, "message_sha256": sha(req.Message),
+				"uploads": req.Uploads})
+		}()
+		// «مستقیم اجرا کن» alone changes how the open operation runs; with nothing open it
+		// gets the last operation's real state — it is never planned as a new request (D59)
+		if m, only := execmode.OnlyInstruction(text); only && len(req.Uploads) == 0 {
+			if t, st := a.activeOperation(ctx, u, c); t != nil {
+				taskID = t.ID
+				a.switchMode(ctx, u, t, st, m, e)
+				return
+			}
+			a.reportLast(ctx, u, c, e)
+			return
+		}
 		if t, st := a.activeOperation(ctx, u, c); t != nil && text != "" && len(req.Uploads) == 0 {
 			taskID = t.ID
 			if req.AskThisTime {
@@ -179,10 +218,10 @@ func (a *Agent) Start(ctx context.Context, u *User, req StartRequest, e Emitter)
 
 func (a *Agent) startTask(ctx context.Context, u *User, req StartRequest, c *conversation, e Emitter) string {
 	st := &State{Stage: StageNew, Lang: lang(u), UserText: strings.TrimSpace(req.Message), Answers: map[string]string{}, AskThisTime: req.AskThisTime,
-		ExecMode: "api"}
-	if req.ExecMode == "ui" {
-		st.ExecMode = "ui"
-	}
+		RequestID: req.RequestID, ContextResets: req.resets}
+	// HOW it runs: the user's words, an explicit choice, their preference, else the real screen.
+	a.resolveExecMode(ctx, u, st, st.UserText, req.ExecMode)
+	st.NoUI = req.UICapable != nil && !*req.UICapable
 	if len([]rune(st.UserText)) > 4000 {
 		st.UserText = string([]rune(st.UserText)[:4000])
 	}
@@ -191,8 +230,18 @@ func (a *Agent) startTask(ctx context.Context, u *User, req StartRequest, c *con
 	}
 	t := &store.Task{ID: newTaskID(), CompanyID: u.Scope.CompanyID, UserID: u.Scope.UserID, Request: st.UserText}
 	e.Emit("task", map[string]any{"task_id": t.ID})
-	a.audit(ctx, u, t.ID, "request", map[string]any{"text": st.UserText, "uploads": req.Uploads, "voice": req.Transcript,
-		"user": u.Me.Email, "ask_this_time": req.AskThisTime})
+	a.audit(ctx, u, t.ID, "request", map[string]any{"text": st.UserText, "uploads": req.Uploads, "voice": req.Transcript, "request_id": req.RequestID, "context_resets": req.resets,
+		"user": u.Me.Email, "ask_this_time": req.AskThisTime, "exec_mode": st.ExecMode, "exec_source": st.ExecSource})
+
+	// Files sent in an earlier turn that registered nothing belong to this request
+	// ("ثبتش کن" after a bare document): they are attached to what it registers (D44).
+	// New files replace them.
+	pending, turns := c.takePending(), 0
+	if pending != nil && len(req.Uploads) == 0 {
+		st.Uploads, st.Extractions, turns = pending.Uploads, pending.Extractions, pending.Turns+1
+		a.audit(ctx, u, t.ID, "uploads_inherited", map[string]any{"uploads": st.Uploads})
+	}
+	defer func() { c.keepPending(st, turns) }()
 
 	// uploads → extraction
 	var docs []extract.Document
@@ -234,6 +283,20 @@ func (a *Agent) startTask(ctx context.Context, u *User, req StartRequest, c *con
 		return t.ID
 	}
 
+	// The pre-tool decision: which business domain and operation, from the user's
+	// own words (never document text), BEFORE any tool or workflow is chosen.
+	if req.pre == nil {
+		dec := intent.Detect(st.UserText)
+		if len(st.Extractions) > 0 && dec.Domain == intent.General {
+			dec.Domain = intent.Documents
+		}
+		st.Intent = &dec
+		a.audit(ctx, u, t.ID, "decision", dec)
+		if len(st.Extractions) == 0 && a.runSkill(ctx, u, t, st, c, e) {
+			return t.ID
+		}
+	}
+
 	// load company configuration (as the user)
 	status(e, st.Lang, "understanding")
 	env := a.env(u)
@@ -254,15 +317,38 @@ func (a *Agent) startTask(ctx context.Context, u *User, req StartRequest, c *con
 	it, res, err := req.pre, provider.Result{Model: st.Model}, error(nil)
 	if it == nil {
 		it, res, err = classify.Interpret(ctx, ai, model, classify.InterpretInput{UserText: st.UserText, History: hist, Extractions: st.Extractions, Config: cfg,
-			Hints: hints, Knowledge: a.Knowledge, Today: a.today(), Lang: st.Lang})
+			Hints: hints, Knowledge: a.Knowledge, Today: a.today(), Lang: st.Lang, Documents: c.referenceContext()})
 		a.cost(ctx, u, t.ID, res)
 	}
 	if err != nil {
 		a.fail(ctx, u, t, st, e, a.plain(st.Lang, err), err)
 		return t.ID
 	}
+	// a request the domain layer placed outside accounting never enters the
+	// accounting-event workflow (who paid? from which account?)
+	if it.Intent == "register" && st.Intent != nil && !st.Intent.IsAccountingEvent() {
+		a.audit(ctx, u, t.ID, "domain_override", map[string]any{"model_intent": it.Intent, "model_event": it.Event.Type, "domain": st.Intent.Domain})
+		it.Intent = "operate"
+	}
+	// «X را بگو / نمایش بده / لیست کن» asks for the application's data: never a chat
+	// answer or a pointer to a screen (D61). Only «کجاست / کجا» is navigation.
+	if (it.Intent == "chat" || it.Intent == "navigate" || (it.Intent == "query" && it.Query.Kind == "open_screen" && !opensScreen(st.UserText))) &&
+		intent.RequestAction(st.UserText) == intent.ActRead {
+		a.audit(ctx, u, t.ID, "read_override", map[string]any{"model_intent": it.Intent})
+		it.Intent = "query"
+		it.Query.Kind = ""
+	}
+	// a check document is registered with the checks operation (the planner), never as
+	// the receipt/payment event workflow (live: «چک دریافتی … روی بانک ملت» became a receipt)
+	if st.Intent != nil && st.Intent.Operation == intent.OpCheck && it.Intent != "operate" {
+		a.audit(ctx, u, t.ID, "domain_override", map[string]any{"model_intent": it.Intent, "model_event": it.Event.Type, "operation": intent.OpCheck})
+		it.Intent, it.UserRequestedRegistration = "operate", true
+	}
 	st.Interp = it
 	st.Model = res.Model
+	// the user's own execution instruction («مستقیم ثبت کن» / «روی صفحه نشانم بده»),
+	// detected deterministically from their words; the interpretation does not persist it
+	st.ExecDirect, st.ExecPreview = it.ExecDirect, it.ExecPreview
 	if it.Intent == "register" {
 		// the operation's structured state; later messages are merged into it
 		st.Frame = classify.NewFrame(it, st.UserText)
@@ -282,12 +368,8 @@ func (a *Agent) startTask(ctx context.Context, u *User, req StartRequest, c *con
 			return t.ID
 		}
 		a.query(ctx, u, t, st, e)
-	case "undo":
-		a.pickTarget(ctx, u, t, st, e, "undo")
-	case "attach":
-		a.pickTarget(ctx, u, t, st, e, "attach")
-	case "pdf":
-		a.pickTarget(ctx, u, t, st, e, "pdf")
+	case "undo", "attach", "pdf":
+		a.startTargeted(ctx, u, t, st, c, e, it.Intent)
 	default:
 		a.chat(ctx, u, t, st, e)
 	}
@@ -402,6 +484,20 @@ func (a *Agent) register(ctx context.Context, u *User, t *store.Task, st *State,
 		}
 	}
 	unclassified := p.Question != nil && p.Question.Field == "event_type"
+	// A purchase invoice read from the user's document is built from the printed lines
+	// (D56), not composed by the model.
+	if p.StopCode == "planner" && st.Plan == nil && st.Interp != nil && st.Interp.Event.Type == classify.EvTransfer {
+		st.Plan = &PlanState{Goal: st.UserText, Status: "planning", UserTexts: []string{st.UserText}, Entities: map[string]any{}, Domain: intent.Accounting, Skill: skillTransfer}
+		a.audit(ctx, u, t.ID, "plan_started", map[string]any{"goal": st.UserText, "skill": skillTransfer})
+		a.transferSkill(ctx, u, t, st, cfg, e)
+		return
+	}
+	if p.Action == "create_purchase" && st.Plan == nil && purchaseDoc(st) != nil {
+		st.Plan = &PlanState{Goal: st.UserText, Status: "planning", UserTexts: []string{st.UserText}, Entities: map[string]any{}, Domain: intent.Documents, Skill: skillPurchaseDoc}
+		a.audit(ctx, u, t.ID, "plan_started", map[string]any{"goal": st.UserText, "skill": skillPurchaseDoc})
+		a.purchaseFromDocument(ctx, u, t, st, e)
+		return
+	}
 	if (p.StopCode != "" || p.Action == "create_invoice" || p.Action == "create_purchase" || unclassified) && st.Plan == nil {
 		// a record the operation needs does not exist: plan it (create it first, then continue)
 		a.audit(ctx, u, t.ID, "handover_to_planner", map[string]any{"reason": p.StopCode})
@@ -492,14 +588,13 @@ func (a *Agent) decide(ctx context.Context, u *User, t *store.Task, st *State, c
 	// How the operation can be carried out. Derived from the operation's own contract
 	// (catalog Spec) — not invented here — so "directly" and "show me on screen" are
 	// only offered when the operation and the app's forms actually support them.
-	classification, supportsDirect, supportsPreview := "", !policy.NeverAuto[p.Action], false
+	classification := ""
+	supportsDirect, supportsPreview := supports(p)
 	if op, ok := catalog.Load().Get(p.Action); ok {
-		spec := op.Spec()
-		classification, supportsDirect, supportsPreview = op.Classification, spec.SupportsDirect, spec.SupportsUIPreview
-	} else if p.Tx != nil || p.Expense != nil {
-		// the built-in receipt/payment/expense operations have real forms
-		supportsPreview = true
+		classification = op.Classification
 	}
+	// Executor selection before anything is presented (D59), as for plans.
+	uiOK, explicitSwitch := selectLegacyExecutor(st)
 	facts := policy.Facts{
 		Action: p.Action, Amount: amount, Currency: strings.ToUpper(cfg.BaseCurrency),
 		Duplicate: len(dups) > 0, Conflict: p.Flags.Conflict, Ambiguous: p.Flags.Ambiguous, LowConfidence: p.Flags.LowConfidence || anyLow(st.Extractions),
@@ -509,7 +604,10 @@ func (a *Agent) decide(ctx context.Context, u *User, t *store.Task, st *State, c
 		Classification: classification, SupportsDirect: supportsDirect, SupportsPreview: supportsPreview,
 		ExplicitDirect: st.ExecDirect || st.PendingDirect, ExplicitPreview: st.ExecPreview,
 	}
-	d := policy.Decide(policy.Input{Facts: facts, Settings: settings, CompanyLock: cs.LockAuto || a.EnvLockAuto, AutoToday: autoToday, AskThisTime: st.AskThisTime})
+	d := policy.Decide(policy.Input{Facts: facts, Settings: settings, CompanyLock: cs.LockAuto || a.EnvLockAuto, AutoToday: autoToday, AskThisTime: st.AskThisTime || explicitSwitch})
+	if st.Exec != nil && st.Exec.Note != "" {
+		e.Emit("message", map[string]any{"text": st.Exec.Note})
+	}
 	st.Decision = &d
 	st.ArgsJSON = args
 	st.PayloadHash = payloadHash(p.Action, args, st.Uploads)
@@ -526,6 +624,7 @@ func (a *Agent) decide(ctx context.Context, u *User, t *store.Task, st *State, c
 			plan.TaskID = t.ID
 			st.Stage = StageUIPreview
 			st.PendingDirect = false
+			a.markPreviewBaseline(ctx, u, st) // to recognise the record the user saves (D46)
 			a.save(ctx, t, st)
 			a.audit(ctx, u, t.ID, "ui_preview", plan)
 			e.Emit("ui_plan", plan)
@@ -560,16 +659,31 @@ func (a *Agent) decide(ctx context.Context, u *User, t *store.Task, st *State, c
 		st.Stage = StageApproval
 		a.save(ctx, t, st)
 		status(e, st.Lang, "waiting")
-		e.Emit("approval", map[string]any{"task_id": t.ID, "token": tok, "expires_at": exp, "payload_hash": st.PayloadHash,
+		e.Emit("approval", map[string]any{"task_id": t.ID, "token": tok, "expires_at": exp, "payload_hash": st.PayloadHash, "exec_mode": st.ExecMode,
 			"reasons": reasonTexts(st.Lang, d.Reasons), "warnings": reasonTexts(st.Lang, d.Warnings),
 			"action": d.Action, "duplicate": len(dups) > 0, "simulated": d.Simulated, "would_auto": d.WouldAuto,
-			"can_preview": supportsPreview, "can_direct": supportsDirect})
+			"can_preview": supportsPreview, "can_direct": supportsDirect, "can_ui": uiOK})
 		e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
 	}
 }
 
 func budgetConfirm(p *classify.Proposal) bool {
 	return (p.Tx != nil && p.Tx.BudgetConfirm) || (p.Expense != nil && p.Expense.BudgetConfirm)
+}
+
+// supports reports how an operation may be carried out, read from the operation's own
+// contract (catalog Spec) rather than assumed: "directly" and "show me on screen" are
+// only offered when the operation and the app's real forms support them.
+func supports(p *classify.Proposal) (direct, preview bool) {
+	direct = !policy.NeverAuto[p.Action]
+	if op, ok := catalog.Load().Get(p.Action); ok {
+		spec := op.Spec()
+		return spec.ExplicitDirectSkipsConfirm, spec.SupportsUIPreview
+	}
+	if p.Tx != nil || p.Expense != nil {
+		preview = true // the built-in receipt/payment/expense operations have real forms
+	}
+	return direct, preview
 }
 
 func anyLow(xs []*extract.Extraction) bool {
@@ -711,15 +825,25 @@ func (a *Agent) plain(lang string, err error) string {
 		return ""
 	}
 	if errors.Is(err, provider.ErrNotConfigured) || errors.Is(err, provider.ErrProxy) || errors.Is(err, provider.ErrAuth) || errors.Is(err, provider.ErrRejected) || errors.Is(err, provider.ErrCreditsInFlight) ||
-		errors.Is(err, provider.ErrRateLimited) || errors.Is(err, provider.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded) {
-		msg := provider.PlainMessage(err)
-		if lang == "fa" && (errors.Is(err, provider.ErrCreditsInFlight) || strings.Contains(err.Error(), "HTTP 402")) {
-			return "اعتبار حساب سرویس هوش مصنوعی کافی نیست؛ مدیر سیستم باید اعتبار را افزایش دهد. چیزی ثبت نشد."
+		errors.Is(err, provider.ErrNoCredit) || errors.Is(err, provider.ErrRateLimited) || errors.Is(err, provider.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded) {
+		if lang != "fa" {
+			return provider.PlainMessage(err)
 		}
-		if lang == "fa" {
-			msg = map[bool]string{true: "ارتباط با سرویس هوش مصنوعی برقرار نشد (پروکسی شبکه پاسخ نمی‌دهد). چیزی ثبت نشد.", false: "سرویس هوش مصنوعی در دسترس نیست. چیزی ثبت نشد."}[errors.Is(err, provider.ErrProxy)]
+		switch {
+		case errors.Is(err, provider.ErrNoCredit) || errors.Is(err, provider.ErrCreditsInFlight) || strings.Contains(err.Error(), "HTTP 402"):
+			return "اعتبار سرویس هوش مصنوعی (یا سقف هزینه کلید) تمام شده است؛ مدیر سیستم باید اعتبار را افزایش دهد. چیزی ثبت نشد."
+		case errors.Is(err, provider.ErrProxy):
+			return "ارتباط با سرویس هوش مصنوعی برقرار نشد (پروکسی شبکه پاسخ نمی‌دهد). چیزی ثبت نشد."
+		case errors.Is(err, provider.ErrNotConfigured):
+			return "دستیار هوش مصنوعی هنوز پیکربندی نشده است (کلید API). به مدیر سیستم اطلاع دهید."
+		case errors.Is(err, provider.ErrAuth):
+			return "سرویس هوش مصنوعی کلید API را نپذیرفت. چیزی ثبت نشد. مدیر سیستم باید کلید را بررسی کند."
+		case errors.Is(err, provider.ErrRateLimited):
+			return "سرویس هوش مصنوعی الان شلوغ است. چیزی ثبت نشد. یک دقیقه دیگر دوباره امتحان کنید."
+		case errors.Is(err, context.DeadlineExceeded):
+			return "پاسخ سرویس هوش مصنوعی بیش از حد طول کشید. چیزی ثبت نشد."
 		}
-		return msg
+		return "سرویس هوش مصنوعی در دسترس نیست. چیزی ثبت نشد."
 	}
 	if e, ok := accounting.AsAPIError(err); ok {
 		return apiErrorText(lang, e)
@@ -733,7 +857,13 @@ func (a *Agent) plain(lang string, err error) string {
 	if strings.Contains(err.Error(), "accounting unreachable") {
 		return tr(lang, "The accounting application is not reachable right now. Nothing was registered.", "نرم‌افزار حسابداری در دسترس نیست. چیزی ثبت نشد.")
 	}
-	return tr(lang, "Something went wrong. Nothing was registered.", "مشکلی پیش آمد. چیزی ثبت نشد.")
+	if errors.Is(err, extract.ErrUnreadable) {
+		return tr(lang, "I could not read this document reliably (the reader's answer was invalid twice). Nothing was registered. Please send it again or a clearer image.",
+			"نتوانستم این سند را با اطمینان بخوانم (پاسخ سرویس خواندن سند دو بار نامعتبر بود). چیزی ثبت نشد. لطفاً دوباره بفرستید یا تصویر واضح‌تری بدهید.")
+	}
+	// never the generic "something went wrong": say what failed and that nothing changed
+	return tr(lang, "An unexpected error stopped this step ("+truncate(err.Error(), 120)+"). Nothing was registered.",
+		"یک خطای پیش‌بینی‌نشده این مرحله را متوقف کرد ("+truncate(err.Error(), 120)+"). چیزی ثبت نشد.")
 }
 
 var apiCodes = map[string][2]string{
@@ -779,3 +909,14 @@ func apiErrorText(lang string, e *accounting.APIError) string {
 
 // fixedQueries are answered by the built-in query handlers; everything else goes to the planner.
 var fixedQueries = map[string]bool{"expenses": true, "transactions": true, "open_screen": true}
+
+// opensScreen: the user explicitly asked to open a page («صفحه … رو باز کن»), not for its data.
+func opensScreen(text string) bool {
+	t := normalize.Text(text)
+	for _, p := range []string{"باز کن", "صفحه", "برو به", "ببر به", "open the", "go to", "take me to"} {
+		if strings.Contains(t, normalize.Text(p)) {
+			return true
+		}
+	}
+	return false
+}

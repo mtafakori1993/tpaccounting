@@ -1,0 +1,3420 @@
+[
+ {
+  "tool": "accounts.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "accounts.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "accounts.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "accounts.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "accounts.next_code.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "accounts.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "attachments.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "list_check",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "attachments.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "list_gone",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "attachments.download",
+  "kind": "export",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "attachments.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "audit.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "auth.change_password.create",
+  "kind": "create",
+  "planner": false,
+  "direct": false,
+  "ui": false,
+  "verify": "none",
+  "approval": "not_offered",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "blocked": "NOT_OFFERED"
+ },
+ {
+  "tool": "auth.login.create",
+  "kind": "create",
+  "planner": false,
+  "direct": false,
+  "ui": false,
+  "verify": "none",
+  "approval": "not_offered",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "blocked": "NOT_OFFERED"
+ },
+ {
+  "tool": "auth.logout.create",
+  "kind": "create",
+  "planner": false,
+  "direct": false,
+  "ui": false,
+  "verify": "none",
+  "approval": "not_offered",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "blocked": "NOT_OFFERED"
+ },
+ {
+  "tool": "auth.me.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "auth.preferences.update",
+  "kind": "update",
+  "planner": false,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "none",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "blocked": "NO_VERIFICATION",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "budgets.activate",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "budgets.analysis.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.approve",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "budgets.archive",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "budgets.close",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "budgets.control.check",
+  "kind": "compute",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.control.events.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.control.events.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.control.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.control.rules.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "budgets.control.rules.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "list_gone",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "budgets.control.rules.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.control.rules.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "budgets.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "budgets.dashboard.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "budgets.drilldown.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.lines.forecasts",
+  "kind": "workflow",
+  "planner": false,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "none",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "blocked": "NO_VERIFICATION",
+  "postconditions": [
+   "target_identity",
+   "record_readable_after",
+   "no_other_record_changed"
+  ],
+  "retry": "the action leaves no status to compare: an uncertain outcome stops and is never resent automatically"
+ },
+ {
+  "tool": "budgets.lines.forecasts.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.reject",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "budgets.reports.report.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "budgets.revise",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_readable_after",
+   "no_other_record_changed"
+  ],
+  "retry": "the action leaves no status to compare: an uncertain outcome stops and is never resent automatically"
+ },
+ {
+  "tool": "budgets.submit",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "budgets.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "checks.banks.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "checks.dashboard.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "checks.export",
+  "kind": "export",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.reports.by_bank.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.reports.by_month.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.reports.by_party.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.reports.by_status.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.reports.cash_flow.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.reports.report.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.summary.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.transitions",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "checks.transitions.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "checks.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the record is not edited from a list row on screen",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "company.account_mappings.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "company.account_mappings.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "company.fiscal_years.close",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "company.fiscal_years.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "company.fiscal_years.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "company.fiscal_years.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "company.fiscal_years.reopen",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "company.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "company.logo.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "list_gone",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "company.logo.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "company.logo.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "company.periods.update",
+  "kind": "update",
+  "planner": false,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "none",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "blocked": "NO_VERIFICATION",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "company.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "cost_centers.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "cost_centers.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "list_gone",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "cost_centers.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "cost_centers.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "dashboard.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "employees.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "employees.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "employees.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "employees.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "employees.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "expenses.cancel",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "expenses.categories.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "list_check",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "expenses.categories.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "expenses.categories.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "list_check",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "expenses.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "expenses.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "expenses.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "expenses.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "expenses.post",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "expenses.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "inventory.documents.cancel",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "inventory.documents.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "inventory.documents.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "inventory.documents.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "inventory.documents.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "inventory.documents.post",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "inventory.documents.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "inventory.ledger.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "inventory.stock.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "inventory.warehouses.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "inventory.warehouses.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "inventory.warehouses.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "journal_entries.cancel",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "journal_entries.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "journal_entries.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "journal_entries.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "journal_entries.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "journal_entries.post",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "journal_entries.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "parties.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "parties.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "parties.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "parties.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "parties.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the record is not edited from a list row on screen",
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "payroll.approve",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.attendance.template",
+  "kind": "export",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.calculate",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.close",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.components.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "payroll.components.defaults.create",
+  "kind": "create",
+  "planner": false,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "none",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "blocked": "NO_VERIFICATION",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "payroll.components.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.components.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "payroll.insurance_rules.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "payroll.insurance_rules.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "list_gone",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "payroll.insurance_rules.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "payroll.liabilities.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.liabilities.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.liabilities.pay",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.pay",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.payslips.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.periods.approve",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.periods.attendance.import",
+  "kind": "workflow",
+  "planner": false,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "none",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "blocked": "NO_VERIFICATION",
+  "postconditions": [
+   "target_identity",
+   "record_readable_after",
+   "no_other_record_changed"
+  ],
+  "retry": "the action leaves no status to compare: an uncertain outcome stops and is never resent automatically"
+ },
+ {
+  "tool": "payroll.periods.attendance.imports.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.periods.calculate",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.periods.close",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.periods.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "payroll.periods.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "payroll.periods.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.periods.inputs.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.periods.inputs.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "payroll.periods.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.periods.pay",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.periods.payments.export",
+  "kind": "export",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.periods.payments.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.periods.payslips.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.periods.post",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.periods.reopen",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.periods.unpay",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.periods.unpost",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.post",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.reopen",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.reports.report.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.rules.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.settings.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "payroll.settings.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "payroll.tax_tables.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "payroll.tax_tables.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "list_gone",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "payroll.tax_tables.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "payroll.unpay",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "payroll.unpost",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "pdf",
+  "kind": "compute",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "products.categories.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "list_check",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "products.categories.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "list_gone",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "products.categories.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "products.categories.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "list_check",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "products.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "products.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "products.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "products.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "products.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "purchases.kind.cancel",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "purchases.kind.convert",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_readable_after",
+   "no_other_record_changed"
+  ],
+  "retry": "the action leaves no status to compare: an uncertain outcome stops and is never resent automatically"
+ },
+ {
+  "tool": "purchases.kind.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "purchases.kind.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "purchases.kind.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "purchases.kind.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "purchases.kind.post",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "purchases.kind.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "reports.balance_sheet.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.cash_position.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.cost_centers.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.expenses.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.journal.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.ledger.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.payables.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.profit_loss.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.purchases.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.receivables.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.sales.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "reports.trial_balance.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "roles.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "roles.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "list_gone",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "roles.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "roles.permissions.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "roles.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "sales.kind.cancel",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "sales.kind.convert",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_readable_after",
+   "no_other_record_changed"
+  ],
+  "retry": "the action leaves no status to compare: an uncertain outcome stops and is never resent automatically"
+ },
+ {
+  "tool": "sales.kind.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "sales.kind.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "gone_check",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "sales.kind.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "sales.kind.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "sales.kind.post",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "sales.kind.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "settings.letterhead.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "settings.letterhead.preview",
+  "kind": "compute",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "settings.letterhead.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "setup.create",
+  "kind": "create",
+  "planner": false,
+  "direct": false,
+  "ui": false,
+  "verify": "none",
+  "approval": "not_offered",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "blocked": "NOT_OFFERED"
+ },
+ {
+  "tool": "setup.status.list",
+  "kind": "read",
+  "planner": false,
+  "direct": false,
+  "ui": false,
+  "verify": "read_back",
+  "approval": "not_offered",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "blocked": "NOT_OFFERED"
+ },
+ {
+  "tool": "treasury.accounts.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "treasury.accounts.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "treasury.accounts.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "treasury.accounts.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the application has no screen for it",
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "treasury.open_items.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "treasury.transactions.allocations",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_readable_after",
+   "no_other_record_changed"
+  ],
+  "retry": "the action leaves no status to compare: an uncertain outcome stops and is never resent automatically"
+ },
+ {
+  "tool": "treasury.transactions.allocations.delete",
+  "kind": "delete",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "the screen executor has no steps for this action",
+  "verify": "list_gone",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "record_gone_or_inactive",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: gone → already completed; still present → resend allowed; unreadable → stop"
+ },
+ {
+  "tool": "treasury.transactions.cancel",
+  "kind": "workflow",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "approval",
+  "destructive": true,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "status_transition",
+   "no_other_record_changed"
+  ],
+  "retry": "read the status: target reached → done (never resent); unchanged → resend allowed; else stop"
+ },
+ {
+  "tool": "treasury.transactions.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "read_back",
+  "approval": "confirm",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "treasury.transactions.get",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "treasury.transactions.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "users.create",
+  "kind": "create",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "values_read_back",
+   "exactly_one_new_record",
+   "no_other_record_changed"
+  ],
+  "retry": "find the record created after the attempt (list, matching values); absent only when the list was read completely, else stop"
+ },
+ {
+  "tool": "users.list",
+  "kind": "read",
+  "planner": true,
+  "direct": true,
+  "ui": false,
+  "ui_reason": "reads are answered from the application",
+  "verify": "result",
+  "approval": "read",
+  "destructive": false,
+  "idempotency": "read"
+ },
+ {
+  "tool": "users.update",
+  "kind": "update",
+  "planner": true,
+  "direct": true,
+  "ui": true,
+  "verify": "list_check",
+  "approval": "approval",
+  "destructive": false,
+  "idempotency": "task_step_key",
+  "postconditions": [
+   "target_identity",
+   "values_read_back",
+   "untouched_fields_unchanged",
+   "no_other_record_changed"
+  ],
+  "retry": "read the record: values applied → done; readable but not applied → resend allowed; unreadable → stop"
+ }
+]

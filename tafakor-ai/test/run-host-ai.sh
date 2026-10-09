@@ -9,6 +9,8 @@ mkdir -p test-artifacts/hostai
 (cd widget && npm run build >/dev/null)
 (cd service && go build -o ../test-artifacts/hostai/aiservice ./cmd/aiservice)
 set -a; [ -f .env ] && . ./.env; set +a
+# live tests may pin a cheaper model without touching .env
+[ -n "${TEST_OPENROUTER_MODEL:-}" ] && export OPENROUTER_MODEL="$TEST_OPENROUTER_MODEL" OPENROUTER_VISION_MODEL="$TEST_OPENROUTER_MODEL"
 export AI_BIND="${AI_BIND:-172.17.0.1}" AI_PORT="${AI_PORT:-18190}" \
   AI_ACCOUNTING_URL="${AI_ACCOUNTING_URL_HOST:-http://127.0.0.1:18085}" \
   OPENROUTER_PROXY_URL=http://127.0.0.1:8118 SPEECH_PROXY_URL=http://127.0.0.1:8118 \

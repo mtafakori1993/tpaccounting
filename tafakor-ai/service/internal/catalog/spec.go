@@ -24,8 +24,15 @@ type Spec struct {
 
 	ConfirmationRequired bool `json:"confirmation_required"`
 	ApprovalRequired     bool `json:"approval_required"`
-	SupportsDirect       bool `json:"supports_direct_execution"`
-	SupportsUIPreview    bool `json:"supports_ui_preview"`
+	// ExplicitDirectSkipsConfirm is POLICY, not capability: whether the user's explicit
+	// «مستقیم ثبت کن» may skip the confirmation card. Whether a direct executor exists is
+	// the capability registry's answer (agent.capabilityFor, D59) — never this field.
+	ExplicitDirectSkipsConfirm bool `json:"explicit_direct_skips_confirmation"`
+	SupportsUIPreview          bool `json:"supports_ui_preview"`
+
+	// UIPrefillComplete: the form has a control for every request field (no lines,
+	// nothing to type by hand after the preview).
+	UIPrefillComplete bool `json:"ui_prefill_complete,omitempty"`
 
 	UIRoute  string            `json:"ui_route,omitempty"`
 	UIOpen   []string          `json:"ui_open,omitempty"`
@@ -38,6 +45,24 @@ type Spec struct {
 var mustHave = map[string][]string{
 	"sales.kind.create":     {"items"},
 	"purchases.kind.create": {"items"},
+	// enum discriminators the app validates as "invalid" when absent
+	"treasury.accounts.create":     {"kind"},
+	"treasury.transactions.create": {"kind"},
+	"checks.create":                {"check_type"},
+	"expenses.create":              {"payment_method"},
+	"payroll.components.create":    {"kind", "method"},
+}
+
+// notRequired corrects fields the generator marks required because several actions share
+// one input type: payroll period actions all decode ActionInput, but only Pay validates
+// treasury_account_id (backend/internal/payroll/periods.go). Covered by a catalog test.
+var notRequired = map[string][]string{}
+
+func init() {
+	for _, a := range []string{"approve", "calculate", "close", "post", "reopen", "unpay", "unpost"} {
+		notRequired["payroll.periods."+a] = []string{"treasury_account_id"}
+		notRequired["payroll."+a] = []string{"treasury_account_id"}
+	}
 }
 
 // variant is one conditional-required rule: when the discriminator (a path
@@ -60,47 +85,57 @@ var variants = map[string][]variant{
 		{discriminator: "kind", value: "bank", require: []string{"name", "bank_name"}},
 		{discriminator: "kind", value: "cash", drop: []string{"bank_name"}},
 	},
+	// Since the generator treats checks inside if/case branches as conditional
+	// (they were wrongly unconditional before), the app's real per-variant rules:
+	"checks.create": {
+		// "a|b": one of them (the app: BankID != nil || BankName != "")
+		{discriminator: "check_type", value: "received", require: []string{"received_date", "bank_id|bank_name"}},
+		{discriminator: "check_type", value: "issued", require: []string{"treasury_account_id"}},
+	},
+	"checks.update": {
+		{discriminator: "check_type", value: "received", require: []string{"received_date"}},
+		{discriminator: "check_type", value: "issued", require: []string{"treasury_account_id"}},
+	},
+	"expenses.create": {
+		{discriminator: "payment_method", value: "credit", require: []string{"party_id"}},
+		{discriminator: "payment_method", value: "cash", require: []string{"treasury_account_id"}},
+		{discriminator: "payment_method", value: "bank", require: []string{"treasury_account_id"}},
+	},
+	"payroll.components.create": {
+		{discriminator: "method", value: "daily_base", require: []string{"quantity_field"}},
+		{discriminator: "method", value: "hourly_base", require: []string{"quantity_field"}},
+		{discriminator: "method", value: "per_unit", require: []string{"quantity_field"}},
+		{discriminator: "method", value: "tax_brackets", require: []string{"brackets"}},
+		{discriminator: "method", value: "insurance_rule", require: []string{"insurance_share"}},
+		{discriminator: "method", value: "formula", require: []string{"formula"}},
+	},
 	"treasury.transactions.create": {
 		{discriminator: "kind", value: "transfer", require: []string{"to_treasury_account_id"}, drop: []string{"party_id"}},
-		{discriminator: "kind", value: "receipt", drop: []string{"to_treasury_account_id"}},
-		{discriminator: "kind", value: "payment", drop: []string{"to_treasury_account_id"}},
+		{discriminator: "kind", value: "receipt", require: []string{"party_id"}, drop: []string{"to_treasury_account_id"}},
+		{discriminator: "kind", value: "payment", require: []string{"party_id"}, drop: []string{"to_treasury_account_id"}},
 	},
 }
 
-// uiMeta describes how to open an operation's real form and which control holds
-// each body field. Curated (the generator emits file paths, not DOM tags); every
-// entry is checked against the operation's own body by a test (D34).
+// uiMeta is a curated correction of the generated form (Operation.UI) for what the
+// frontend source cannot show the generator. Kept small; every entry is checked
+// against the operation's own body by a test (D34, D41).
 type uiMeta struct {
 	Route  string
 	Open   []uiOpen
 	Fields map[string]string
 }
 
-// uiOpen is a candidate control (a data-ai-action tag) that opens the form. When
-// Field/Value are set, the control is the one for that discriminator value
-// (e.g. kind=bank → the "New bank account" button).
+// uiOpen is a control (a data-ai-action tag) that opens the form; Field/Value name
+// the variant it opens (kind=bank → "New bank account").
 type uiOpen struct {
 	Tag   string
 	Field string
 	Value string
 }
 
-var uiMetaByOp = map[string]uiMeta{
-	"treasury.accounts.create": {
-		Route: "/treasury",
-		Open: []uiOpen{
-			{Tag: "treasury.newBank", Field: "kind", Value: "bank"},
-			{Tag: "treasury.newCash", Field: "kind", Value: "cash"},
-		},
-		Fields: map[string]string{
-			"name": "common.name", "bank_name": "treasury.bankName", "branch": "treasury.branch",
-			"account_number": "treasury.accountNumber", "iban": "treasury.iban",
-			"card_number": "treasury.cardNumber", "account_holder": "treasury.accountHolder",
-			"opening_balance": "treasury.openingBalance", "opening_date": "treasury.openingDate",
-			"description": "common.description",
-		},
-	},
-}
+// uiMetaByOp: no corrections are needed now that forms are generated (D41); the
+// table stays as the place for them.
+var uiMetaByOp = map[string]uiMeta{}
 
 // Spec derives the operation's contract.
 func (o *Operation) Spec() Spec {
@@ -112,23 +147,27 @@ func (o *Operation) Spec() Spec {
 		Path:     o.Path,
 		Endpoint: o.Method + " " + o.Path,
 
-		RequiredFields:       req,
-		OptionalFields:       opt,
-		ConditionalRequired:  o.conditional(),
-		ConfirmationRequired: o.Classification == NeedsConfirmation || o.Classification == NeedsApproval,
-		ApprovalRequired:     o.Classification == NeedsApproval,
-		SupportsDirect:       o.Executable() && !o.IsRead() && o.Classification != NeedsApproval,
+		RequiredFields:             req,
+		OptionalFields:             opt,
+		ConditionalRequired:        o.conditional(),
+		ConfirmationRequired:       o.Classification == NeedsConfirmation || o.Classification == NeedsApproval,
+		ApprovalRequired:           o.Classification == NeedsApproval,
+		ExplicitDirectSkipsConfirm: o.Executable() && !o.IsRead() && o.Classification != NeedsApproval,
 	}
-	if m, ok := uiMetaByOp[o.ID]; ok {
-		s.UIRoute = m.Route
-		s.UIFields = m.Fields
-		for _, c := range m.Open {
+	if f := o.UI; f != nil && s.ExplicitDirectSkipsConfirm {
+		s.UIRoute = f.Route
+		s.UIFields = map[string]string{}
+		for name, x := range f.Fields {
+			s.UIFields[name] = x.Tag
+		}
+		for _, c := range f.Open {
 			s.UIOpen = append(s.UIOpen, c.Tag)
 		}
-		// A preview is possible when the real form has a control for every required
-		// field, so a pre-filled form can always be submitted. Optional values the
-		// plan carries but the form cannot hold are reported, never silently dropped.
-		s.SupportsUIPreview = o.UIExists && m.Route != "" && o.formCoversRequired(m.Fields)
+		// "Show me on screen" opens the real form and fills what it can hold; values it
+		// cannot hold (line items, fields without a control) are reported to the user,
+		// never silently dropped. Submitting through the UI is a different question (D16).
+		s.SupportsUIPreview = f.Route != "" && len(f.Fields) > 0
+		s.UIPrefillComplete = len(f.Missing) == 0 && len(f.Lines) == 0 && o.formCoversRequired(s.UIFields)
 	}
 	return s
 }
@@ -150,8 +189,14 @@ func (o *Operation) requiredAndOptional() (req, opt []string) {
 	for _, n := range mustHave[o.ID] {
 		must[n] = true
 	}
+	optional := map[string]bool{}
+	for _, n := range notRequired[o.ID] {
+		optional[n] = true
+	}
 	for _, f := range o.InputFields() {
 		switch {
+		case optional[f.Name]:
+			opt = append(opt, f.Name)
 		case f.Required || must[f.Name]:
 			req = append(req, f.Name)
 		default:
@@ -232,6 +277,19 @@ func (s Spec) MissingRequired(path map[string]string, body map[string]json.RawMe
 	}
 	var missing []string
 	for _, f := range required {
+		if strings.Contains(f, "|") {
+			// one of several fields
+			any := false
+			for _, alt := range strings.Split(f, "|") {
+				if t := strings.TrimSpace(string(body[alt])); t != "" && t != "null" && t != `""` {
+					any = true
+				}
+			}
+			if !any {
+				missing = append(missing, f)
+			}
+			continue
+		}
 		raw, ok := body[f]
 		if !ok {
 			missing = append(missing, f)
@@ -248,16 +306,14 @@ func (s Spec) MissingRequired(path map[string]string, body map[string]json.RawMe
 	return missing
 }
 
-// UIOpenFor returns the control that opens the form for this invocation, given a
-// discriminator value (e.g. kind=bank). When no discriminator matches, the first
-// candidate is used.
+// UIOpenFor returns the controls that open the form for a variant value (kind=bank
+// → "New bank account"); when no variant matches, all candidates in order.
 func (o *Operation) UIOpenFor(value string) []string {
-	m, ok := uiMetaByOp[o.ID]
-	if !ok {
+	if o.UI == nil {
 		return nil
 	}
 	var all []string
-	for _, c := range m.Open {
+	for _, c := range o.UI.Open {
 		if value != "" && c.Field != "" && c.Value == value {
 			return []string{c.Tag} // the control for exactly this variant
 		}
@@ -282,3 +338,6 @@ func (c *Catalog) Specs(can func(string) bool) []Spec {
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
+
+// SpecRequired is the operation's required body fields (curated corrections applied).
+func (o *Operation) SpecRequired() ([]string, []string) { return o.requiredAndOptional() }

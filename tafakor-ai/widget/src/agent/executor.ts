@@ -1,31 +1,27 @@
-// Executor: runs a server-issued UI plan step by step with the virtual cursor.
-// Target order: data-ai-* tags → accessibility (role + label) → vision fallback
-// (server picks among numbered candidates) — never long blind coordinate sequences.
-// Every important step is verified; on any mismatch it stops and reports.
+// Executor: runs a server-issued UI plan step by step through the human-interaction
+// engine (engine.ts). It adds no interaction logic of its own.
+//
+// Two kinds of plan:
+//   HUMAN_UI (default) — really operates the application: clicks, types, submits, observes.
+//   preview            — UI_PREVIEW: fills the real form but never submits; the user saves it.
+// Every important step is verified by the engine; on any mismatch it stops and reports.
+// It never falls back to the API: a failure is reported, and the user decides.
 
 import { Cursor } from './cursor';
-import { blur, click, comboPick, navigate, selectValue, setChecked, setDate, type, digitsToAscii } from './drivers';
-import { snapshot, waitFor } from './observer';
-import { locateByVision } from './vision';
+import { HumanUIEngine, executeHumanUIAction, type UIStep } from './engine';
 
-export interface UIStep {
-  op: 'navigate' | 'click' | 'fill' | 'select' | 'combo' | 'date' | 'tab' | 'check' | 'submit' | 'wait_closed';
-  page?: string;
-  dialog?: string;
-  target?: string;
-  // Alternative tags for the same target or scope, tried in order: several controls can
-  // open the same form, and each opens a differently-named dialog.
-  alts?: string[];
-  value?: string;
-  search?: string;
-  label: string;
-}
+export type { UIStep } from './engine';
 
 export interface UIPlan {
   task_id: string;
   steps: UIStep[];
   // 'preview': fill the real form but never submit — the user reviews and saves it by hand.
   mode?: 'preview';
+  // Always 'human_ui' for plans the assistant operates itself.
+  exec_mode?: string;
+  step?: string;
+  // preview only: the save steps left to the user (watched, never run)
+  watch?: UIStep[];
 }
 
 export interface UIResult {
@@ -34,110 +30,35 @@ export interface UIResult {
   error: string;
   // The preview plan was filled in; nothing was submitted.
   preview?: boolean;
+  // After a preview: the user saved the form themselves (the server verifies it).
+  user_saved?: boolean;
 }
 
-// Secondary (accessibility) names for the tags used by plans, in both languages.
-// Used only when a tag is missing (e.g. an older build of the app).
-const LABELS: Record<string, string[]> = {
-  'common.date': ['Date', 'تاریخ'],
-  'common.amount': ['Amount', 'مبلغ'],
-  'treasury.treasuryAccount': ['Cash / bank account', 'صندوق / حساب بانکی'],
-  'treasury.payee': ['Party', 'شخص'],
-  'journal.account': ['Account', 'حساب'],
-  'journal.costCenter': ['Cost center', 'مرکز هزینه'],
-  'common.reference': ['Reference', 'عطف'],
-  'common.description': ['Description', 'شرح'],
-  'treasury.autoAllocate': ['Settle oldest invoices first', 'تسویه خودکار از قدیمی‌ترین فاکتور'],
-  'common.save': ['Save', 'ذخیره'],
-  'common.saveAndPost': ['Save and post', 'ذخیره و ثبت قطعی'],
-  'treasury.newReceipt': ['New receipt', 'دریافت جدید'],
-  'treasury.newPayment': ['New payment', 'پرداخت جدید'],
-  'expenses.newExpense': ['New expense', 'هزینه جدید'],
-  'expenses.category': ['Category', 'دسته هزینه'],
-  'expenses.paymentMethod': ['Paid from', 'محل پرداخت'],
-  'invoices.supplier': ['Supplier', 'تأمین‌کننده'],
-};
-
-function norm(s: string) {
-  return s.replace(/\s+/g, ' ').replace(/\*/g, '').trim();
+/** The steps a preview leaves to the user (save and what follows it). */
+export function previewRemainder(plan: UIPlan): UIStep[] {
+  if (plan.watch?.length) return plan.watch;
+  const i = plan.steps.findIndex((s) => s.op === 'submit' || s.op === 'wait_closed' || s.op === 'wait_leave');
+  return i < 0 ? [] : plan.steps.slice(i);
 }
 
-function dialogScope(key?: string, alts?: string[]): ParentNode | null {
-  // without a dialog, act inside the page content only (never the shell or menus)
-  if (!key) return document.querySelector('main [data-ai-page], main[data-ai-page]') ?? document.querySelector('main') ?? document;
-  for (const k of [key, ...(alts ?? [])]) {
-    const tagged = document.querySelector(`[data-ai-dialog="${CSS.escape(k)}"]`);
-    if (tagged) return tagged;
-    const names = LABELS[k] ?? [];
-    for (const d of Array.from(document.querySelectorAll('[role="dialog"]'))) {
-      const title = d.querySelector('.dialog-title, h2')?.textContent ?? '';
-      if (names.some((n) => norm(title) === n)) return d;
-    }
-  }
-  return null;
-}
-
-/** Finds the control for a field: tag first, then the <label> text. */
-function fieldControl(scope: ParentNode, key: string): HTMLElement | null {
-  const wrap = scope.querySelector(`[data-ai-field="${CSS.escape(key)}"]`);
-  const pick = (w: Element) => w.querySelector<HTMLElement>('input:not([type="hidden"]), select, textarea, [role="combobox"]');
-  if (wrap) return wrap.matches('input,select,textarea') ? (wrap as HTMLElement) : pick(wrap);
-  const names = LABELS[key] ?? [];
-  for (const lbl of Array.from(scope.querySelectorAll('label'))) {
-    if (names.includes(norm(lbl.textContent ?? ''))) {
-      const id = lbl.getAttribute('for');
-      const el = id ? document.getElementById(id) : lbl.querySelector('input,select,textarea');
-      if (el) return el as HTMLElement;
-      const parent = lbl.parentElement;
-      if (parent) return pick(parent);
-    }
-  }
-  return null;
-}
-
-function isVisible(el: Element) {
-  const r = (el as HTMLElement).getBoundingClientRect();
-  return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
-}
-
-/** Visible tagged control; real buttons win over links (a link may reload the page). */
-function actionControl(scope: ParentNode, keys: string[]): HTMLElement | null {
-  for (const key of keys) {
-    const tagged = Array.from(scope.querySelectorAll<HTMLElement>(`[data-ai-action="${CSS.escape(key)}"]`)).filter(isVisible);
-    const best = tagged.find((e) => e.tagName === 'BUTTON') ?? tagged[0];
-    if (best) return best;
-    const names = LABELS[key] ?? [];
-    const named = Array.from(scope.querySelectorAll<HTMLElement>('button, [role="button"]')).find((b) => isVisible(b) && names.includes(norm(b.textContent ?? '')));
-    if (named) return named;
-  }
-  return null;
-}
-
-async function resolve(step: UIStep, kind: 'field' | 'action' | 'tab'): Promise<HTMLElement | null> {
-  const find = () => {
-    const scope = dialogScope(step.dialog, step.alts);
-    if (!scope) return null;
-    if (kind === 'field') return fieldControl(scope, step.target!);
-    if (kind === 'tab') return scope.querySelector<HTMLElement>(`[role="tab"][data-ai-tab="${CSS.escape(step.target!)}"], [role="tab"][data-key="${CSS.escape(step.target!)}"]`);
-    return actionControl(scope, [step.target!, ...(step.alts ?? [])].filter(Boolean));
-  };
-  const el = await waitFor(find, 4000);
-  if (el) return el;
-  // Vision fallback: the server looks at a screenshot + numbered candidates.
-  return locateByVision(step, snapshot());
+/** After a preview, waits for the user to save (or close) the open form themselves. */
+export async function watchUserSave(plan: UIPlan, cursor: Cursor, maxMs?: number) {
+  return new HumanUIEngine(cursor).watchUserSave(previewRemainder(plan), maxMs);
 }
 
 export async function runPlan(plan: UIPlan, cursor: Cursor, onStatus: (label: string) => void, aborted: () => boolean): Promise<UIResult> {
   const preview = plan.mode === 'preview';
+  const engine = new HumanUIEngine(cursor);
   cursor.show();
   try {
     for (let i = 0; i < plan.steps.length; i++) {
       if (aborted()) return { ok: false, failed_step: i, error: 'cancelled' };
       const s = plan.steps[i];
-      // Preview mode: fill the form and stop — the user reviews and submits it themselves.
-      if (preview && (s.op === 'submit' || s.op === 'wait_closed')) break;
+      // Preview: fill the form and stop — the user reviews and submits it themselves.
+      if (preview && (s.op === 'submit' || s.op === 'wait_closed' || s.op === 'wait_leave')) break;
       onStatus(s.label);
-      const err = await runStep(s, cursor);
+      cursor.label.textContent = s.label;
+      const err = await executeHumanUIAction(engine, s);
       if (err) return { ok: false, failed_step: i, error: err };
     }
     return { ok: true, failed_step: -1, error: '', preview };
@@ -146,95 +67,4 @@ export async function runPlan(plan: UIPlan, cursor: Cursor, onStatus: (label: st
   } finally {
     setTimeout(() => cursor.hide(), 800);
   }
-}
-
-async function runStep(s: UIStep, cursor: Cursor): Promise<string | null> {
-  switch (s.op) {
-    case 'navigate': {
-      if (!(await navigate(s.value!))) return `could not open ${s.value}`;
-      if (s.page) {
-        const ok = await waitFor(() => document.querySelector(`[data-ai-page="${CSS.escape(s.page!)}"]`) || location.pathname === s.value, 5000);
-        if (!ok) return `page ${s.page} did not load`;
-      }
-      return null;
-    }
-    case 'click': {
-      const el = await resolve(s, 'action');
-      if (!el) return `button ${s.target} not found`;
-      if ((el as HTMLButtonElement).disabled) return `button ${s.target} is disabled (permission?)`;
-      await cursor.to(el, s.label);
-      await cursor.click();
-      click(el);
-      // plans open the dialog named like the action
-      const opened = await waitFor(() => [s.target!, ...(s.alts ?? [])].some((t) => dialogScope(t)), 4000);
-      return opened ? null : `form ${s.target} did not open`;
-    }
-    case 'tab': {
-      const el = await resolve(s, 'tab');
-      if (!el) return `tab ${s.target} not found`;
-      await cursor.to(el, s.label);
-      await cursor.click();
-      click(el);
-      return (await waitFor(() => el.getAttribute('aria-selected') === 'true', 2000)) ? null : `tab ${s.target} not selected`;
-    }
-    case 'fill': {
-      const el = (await resolve(s, 'field')) as HTMLInputElement | null;
-      if (!el) return `field ${s.target} not found`;
-      await cursor.to(el, s.label);
-      await cursor.click();
-      await type(el, s.value!);
-      blur(el);
-      await new Promise((r) => setTimeout(r, 40));
-      const got = digitsToAscii(el.value).replace(/[,٬\s]/g, '');
-      const want = s.value!.replace(/[,\s]/g, '');
-      return got === want || el.value === s.value ? null : `field ${s.target} shows "${el.value}" instead of "${s.value}"`;
-    }
-    case 'date': {
-      const el = (await resolve(s, 'field')) as HTMLInputElement | null;
-      if (!el) return `date field ${s.target} not found`;
-      await cursor.to(el, s.label);
-      await cursor.click();
-      return (await setDate(el, s.value!)) ? null : `date ${s.value} was not accepted`;
-    }
-    case 'select': {
-      const el = (await resolve(s, 'field')) as HTMLSelectElement | null;
-      if (!el || el.tagName !== 'SELECT') return `list ${s.target} not found`;
-      await cursor.to(el, s.label);
-      await cursor.click();
-      if (!(await waitFor(() => Array.from(el.options).some((o) => o.value === s.value), 4000))) return `option ${s.value} is not available in ${s.target}`;
-      return selectValue(el, s.value!) ? null : `could not choose ${s.value} in ${s.target}`;
-    }
-    case 'combo': {
-      const el = (await resolve(s, 'field')) as HTMLInputElement | null;
-      if (!el) return `picker ${s.target} not found`;
-      await cursor.to(el, s.label);
-      await cursor.click();
-      return (await comboPick(el, s.search ?? '', s.value!)) ? null : `could not find "${s.search}" in ${s.target}`;
-    }
-    case 'check': {
-      const el = (await resolve(s, 'field')) as HTMLInputElement | null;
-      if (!el || el.type !== 'checkbox') return `checkbox ${s.target} not found`;
-      await cursor.to(el, s.label);
-      await cursor.click();
-      return setChecked(el, s.value === 'true') ? null : `checkbox ${s.target} did not change`;
-    }
-    case 'submit': {
-      const el = await resolve(s, 'action');
-      if (!el) return `button ${s.target} not found`;
-      await cursor.to(el, s.label);
-      await cursor.click();
-      click(el);
-      return null;
-    }
-    case 'wait_closed': {
-      const keys = [s.dialog, ...(s.alts ?? [])].filter(Boolean) as string[];
-      const closed = await waitFor(() => !keys.some((k) => dialogScope(k)), 10000);
-      if (closed) return null;
-      // The form stayed open: report the app's own validation message.
-      const scope = dialogScope(keys[0], keys.slice(1)) as Element | null;
-      const msg = scope?.querySelector('.field-error, .alert, [role="alert"]')?.textContent?.trim();
-      return msg ? `the form reported: ${msg}` : 'the form did not close after saving';
-    }
-  }
-  return `unknown step ${(s as UIStep).op}`;
 }

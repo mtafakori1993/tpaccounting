@@ -15,6 +15,7 @@ type Party struct {
 	IsSupplier bool   `json:"is_supplier"`
 	IsOther    bool   `json:"is_other"`
 	Mobile     string `json:"mobile"`
+	Phone      string `json:"phone"`
 	IsActive   bool   `json:"is_active"`
 }
 

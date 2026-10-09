@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -296,6 +297,17 @@ func (a *Agent) prepareUndo(ctx context.Context, u *User, srcID string, target *
 }
 
 func (a *Agent) executeUndo(ctx context.Context, u *User, t *store.Task, st *State, e Emitter) {
+	if st.humanUI() {
+		// cancel with the application's own button and confirmation dialog
+		plan, why := cancelPlan(st.Lang, *st.Target)
+		st.UIKind = "undo"
+		if why != "" {
+			a.uiUnavailable(ctx, u, t, st, e, why)
+			return
+		}
+		a.startScreenTask(ctx, u, t, st, e, "undo", plan)
+		return
+	}
 	status(e, st.Lang, "registering")
 	auth := &tools.Authorization{PayloadHash: tools.PayloadHash("cancel_document", st.ArgsJSON), Mode: "human", ApprovedBy: u.Scope.UserID, TaskID: t.ID}
 	_, err := a.Tools.Call(ctx, a.env(u), "cancel_document", st.ArgsJSON, auth)
@@ -304,6 +316,11 @@ func (a *Agent) executeUndo(ctx context.Context, u *User, t *store.Task, st *Sta
 		a.fail(ctx, u, t, st, e, a.plain(st.Lang, err), err)
 		return
 	}
+	a.verifyUndo(ctx, u, t, st, e, "direct")
+}
+
+// verifyUndo reads the cancelled document back through the application.
+func (a *Agent) verifyUndo(ctx context.Context, u *User, t *store.Task, st *State, e Emitter, via string) {
 	// verify status = cancelled
 	status(e, st.Lang, "verifying")
 	path := fmt.Sprintf("/treasury/transactions/%d", st.Target.EntityID)
@@ -315,7 +332,7 @@ func (a *Agent) executeUndo(ctx context.Context, u *User, t *store.Task, st *Sta
 		Number int64  `json:"number"`
 	}
 	verified := a.Acc.Do(ctx, u.Cred, accountingGet(path), &got) == nil && got.Status == "cancelled"
-	st.Result = &Result{EntityType: st.Target.EntityType, EntityID: st.Target.EntityID, Number: got.Number, Status: got.Status, Mode: "human", Verified: verified}
+	st.Result = &Result{EntityType: st.Target.EntityType, EntityID: st.Target.EntityID, Number: got.Number, Status: got.Status, Mode: "human", Verified: verified, Via: via}
 	if !verified {
 		st.Result.Mismatches = []string{"status=" + got.Status}
 	}
@@ -338,10 +355,27 @@ func (a *Agent) executeUndo(ctx context.Context, u *User, t *store.Task, st *Sta
 
 // ---------- targets for undo / attach / pdf ----------
 
+// targetFilters: which documents each targeted operation can act on.
+var targetFilters = map[string]func(Artifact) bool{"pdf": printable, "undo": cancellable, "attach": attachable}
+
+// startTargeted runs undo / attach / pdf on the document the message refers to. A
+// reference the conversation already holds ("PDF این", "رسیدش", "همین فاکتور") resolves
+// to that exact record; only when it does not is the user asked to pick one.
+func (a *Agent) startTargeted(ctx context.Context, u *User, t *store.Task, st *State, c *conversation, e Emitter, purpose string) {
+	ref := c.resolveReference(st.UserText, targetFilters[purpose])
+	if ref == nil {
+		a.pickTarget(ctx, u, t, st, e, purpose)
+		return
+	}
+	st.Active = ref
+	a.audit(ctx, u, t.ID, "reference_resolved", map[string]any{"purpose": purpose, "artifact": ref})
+	a.useTarget(ctx, u, t, st, "target_"+purpose, *ref, e)
+}
+
 // pickTarget asks which recent document the user means (the assistant never guesses).
 func (a *Agent) pickTarget(ctx context.Context, u *User, t *store.Task, st *State, e Emitter, purpose string) {
 	status(e, st.Lang, "searching")
-	opts := a.recentDocuments(ctx, u, 10)
+	opts := a.recentDocuments(ctx, u, 10, purpose == "pdf" || purpose == "attach")
 	if len(opts) == 0 {
 		a.stop(ctx, u, t, st, e, tr(st.Lang, "I couldn't find any recent documents you can access.", "سند اخیری که به آن دسترسی داشته باشید پیدا نشد."))
 		return
@@ -361,7 +395,7 @@ func (a *Agent) pickTarget(ctx context.Context, u *User, t *store.Task, st *Stat
 	e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
 }
 
-func (a *Agent) recentDocuments(ctx context.Context, u *User, n int) []classify.Option {
+func (a *Agent) recentDocuments(ctx context.Context, u *User, n int, invoices bool) []classify.Option {
 	env := a.env(u)
 	var out []classify.Option
 	if u.Me.Can("treasury.view") {
@@ -375,7 +409,7 @@ func (a *Agent) recentDocuments(ctx context.Context, u *User, n int) []classify.
 				if x.PartyName != nil {
 					party = *x.PartyName
 				}
-				out = append(out, classify.Option{Value: fmt.Sprintf("treasury_transaction:%d", x.ID), Label: fmt.Sprintf("%s #%d · %s · %s %s", x.Kind, x.Number, x.Date[:min(10, len(x.Date))], x.Amount, party)})
+				out = append(out, classify.Option{Value: fmt.Sprintf("treasury_%s:%d", x.Kind, x.ID), Label: fmt.Sprintf("%s #%d · %s · %s %s", x.Kind, x.Number, x.Date[:min(10, len(x.Date))], x.Amount, party)})
 			}
 		}
 	}
@@ -390,14 +424,74 @@ func (a *Agent) recentDocuments(ctx context.Context, u *User, n int) []classify.
 			}
 		}
 	}
+	if invoices {
+		for _, sd := range []struct{ side, path, perm string }{{"sales", "/sales", "sales.view"}, {"purchase", "/purchases", "purchases.view"}} {
+			if !u.Me.Can(sd.perm) {
+				continue
+			}
+			for _, kind := range []string{"quotations", "invoices"} {
+				var list struct {
+					Items []tools.Invoice `json:"items"`
+				}
+				call := accountingCall{Method: "GET", Path: sd.path + "/" + kind, Query: map[string][]string{"page_size": {strconv.Itoa(n)}}}
+				if err := a.Acc.Do(ctx, u.Cred, call, &list); err != nil {
+					continue
+				}
+				for _, x := range list.Items {
+					if x.Status == "cancelled" {
+						continue
+					}
+					art := Artifact{Type: x.Side + "_" + x.Kind, ID: x.ID, Number: x.Number, Side: x.Side, Kind: x.Kind, Label: x.PartyName}
+					out = append(out, classify.Option{Value: fmt.Sprintf("%s:%d", art.Type, x.ID),
+						Label: fmt.Sprintf("%s · %s · %s", art.describe(lang(u)), x.Date[:min(10, len(x.Date))], x.Total)})
+				}
+			}
+		}
+	}
 	return out
+}
+
+// artifactFromValue reads a target option value ("sales_quotation:7", "treasury_receipt:12",
+// and the older "treasury_transaction:12" / "expense:3").
+func artifactFromValue(v, label string) Artifact {
+	parts := strings.SplitN(v, ":", 2)
+	id, _ := strconv.ParseInt(parts[len(parts)-1], 10, 64)
+	a := Artifact{Type: parts[0], ID: id, Label: label}
+	if k, ok := strings.CutPrefix(a.Type, "treasury_"); ok && k != "transaction" {
+		a.Kind = k
+	}
+	for _, side := range []string{"sales", "purchase"} {
+		if k, ok := strings.CutPrefix(a.Type, side+"_"); ok && invoiceKinds[k] {
+			a.Side, a.Kind = side, k
+		}
+	}
+	return a
 }
 
 // AnswerTarget handles answers to target questions (undo/attach/pdf).
 func (a *Agent) answerTarget(ctx context.Context, u *User, t *store.Task, st *State, field, v string, e Emitter) {
-	parts := strings.SplitN(v, ":", 2)
-	id, _ := strconv.ParseInt(parts[len(parts)-1], 10, 64)
-	target := &Target{EntityType: parts[0], EntityID: id, Label: v}
+	label := v
+	if st.Proposal != nil && st.Proposal.Question != nil {
+		for _, o := range st.Proposal.Question.Options {
+			if o.Value == v {
+				label = o.Label
+			}
+		}
+	}
+	art := artifactFromValue(v, "")
+	if art.ID == 0 {
+		e.Emit("error", map[string]any{"message": "unknown document"})
+		return
+	}
+	// the document the user picked is what "this" means from now on
+	emitArtifact(e, &art)
+	art.Label = label
+	a.useTarget(ctx, u, t, st, field, art, e)
+}
+
+// useTarget runs undo / pdf / attach on one resolved document.
+func (a *Agent) useTarget(ctx context.Context, u *User, t *store.Task, st *State, field string, art Artifact, e Emitter) {
+	target := art.target()
 	switch field {
 	case "target_undo":
 		st.Stage = StageDone
@@ -447,13 +541,28 @@ func accountingGet(path string) accountingCall { return accountingCall{Method: "
 func decimalZero() decimal.Decimal { return decimal.Zero }
 
 func (a *Agent) generatePDF(ctx context.Context, u *User, t *store.Task, st *State, e Emitter) {
+	if st.humanUI() {
+		// open the document and press the application's own print/PDF button
+		st.UIKind = "pdf"
+		plan, why := printPlan(st.Lang, *st.Target)
+		if why != "" {
+			a.uiUnavailable(ctx, u, t, st, e, why)
+			return
+		}
+		a.startScreenTask(ctx, u, t, st, e, "pdf", plan)
+		return
+	}
 	status(e, st.Lang, "pdf")
 	doc, err := a.documentFor(ctx, u, st.Lang, st.Target)
 	if err != nil {
 		a.fail(ctx, u, t, st, e, a.plain(st.Lang, err), err)
 		return
 	}
-	args, _ := json.Marshal(tools.PDFArgs{Document: doc, FileName: fmt.Sprintf("%s-%d", st.Target.EntityType, st.Target.EntityID)})
+	name := fmt.Sprintf("%s-%d", st.Target.EntityType, st.Target.EntityID)
+	if st.Target.Side != "" {
+		name = fmt.Sprintf("%s-%s-%d", st.Target.Side, st.Target.Kind, st.Target.EntityID)
+	}
+	args, _ := json.Marshal(tools.PDFArgs{Document: doc, FileName: name})
 	// Rendering a PDF changes no accounting data; it is authorised for the requesting user directly.
 	res, err := a.Tools.Call(ctx, a.env(u), "generate_pdf", args, &tools.Authorization{PayloadHash: tools.PayloadHash("generate_pdf", args), Mode: "human", TaskID: t.ID})
 	a.audit(ctx, u, t.ID, "tool_call", map[string]any{"tool": "generate_pdf", "target": st.Target, "ok": err == nil, "error": errString(err)})
@@ -470,7 +579,11 @@ func (a *Agent) generatePDF(ctx context.Context, u *User, t *store.Task, st *Sta
 		st.Stage = StageDone
 	}
 	a.save(ctx, t, st)
-	e.Emit("file", map[string]any{"url": url, "name": "document.pdf"})
+	// say which document this is: the file is the answer, not "a PDF was made"
+	if st.Target.Label != "" {
+		e.Emit("message", map[string]any{"text": tr(st.Lang, "PDF of ", "PDF ") + st.Target.Label})
+	}
+	e.Emit("file", map[string]any{"url": url, "name": name + ".pdf"})
 	e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
 }
 
@@ -523,8 +636,116 @@ func (a *Agent) documentFor(ctx context.Context, u *User, lang string, tg *Targe
 		doc := map[string]any{"title": tr(lang, "Expense voucher", "سند هزینه"), "number": strconv.FormatInt(x.Number, 10), "date": x.Date[:min(10, len(x.Date))],
 			"lang": lang, "meta": meta, "totals": []map[string]any{{"label": tr(lang, "Amount", "مبلغ"), "value": x.Amount.String(), "strong": true}}, "notes": x.Description}
 		return json.Marshal(doc)
+	case "invoice":
+		return a.invoiceDocument(ctx, u, lang, tg)
+	}
+	if doc, ok, err := a.moreDocuments(ctx, u, lang, tg); ok {
+		return doc, err
 	}
 	return nil, fmt.Errorf("%w: unsupported document", tools.ErrInvalidInput)
+}
+
+// invoiceDocument mirrors the application's own invoice PDF (frontend lib/documents.ts
+// invoiceDocument): same title, parties, lines and totals, rendered by the same /pdf service.
+func (a *Agent) invoiceDocument(ctx context.Context, u *User, lang string, tg *Target) (json.RawMessage, error) {
+	kv := func(l, v string) map[string]string { return map[string]string{"label": l, "value": v} }
+	base := map[string]string{"sales": "/sales", "purchase": "/purchases"}[tg.Side]
+	kinds := map[string]string{"quotation": "quotations", "invoice": "invoices", "return": "returns"}[tg.Kind]
+	if base == "" || kinds == "" {
+		return nil, fmt.Errorf("%w: unknown invoice type", tools.ErrInvalidInput)
+	}
+	var x struct {
+		Side          string          `json:"side"`
+		Kind          string          `json:"kind"`
+		Status        string          `json:"status"`
+		Reference     string          `json:"reference"`
+		Notes         string          `json:"notes"`
+		Number        int64           `json:"number"`
+		Date          string          `json:"date"`
+		DueDate       *string         `json:"due_date"`
+		PartyName     string          `json:"party_name"`
+		Subtotal      decimal.Decimal `json:"subtotal"`
+		DiscountTotal decimal.Decimal `json:"discount_total"`
+		TaxTotal      decimal.Decimal `json:"tax_total"`
+		Total         decimal.Decimal `json:"total"`
+		PaidAmount    decimal.Decimal `json:"paid_amount"`
+		Outstanding   decimal.Decimal `json:"outstanding"`
+		Items         []struct {
+			ProductName *string         `json:"product_name"`
+			Description string          `json:"description"`
+			Quantity    decimal.Decimal `json:"quantity"`
+			Unit        string          `json:"unit"`
+			UnitPrice   decimal.Decimal `json:"unit_price"`
+			Discount    decimal.Decimal `json:"discount"`
+			TaxAmount   decimal.Decimal `json:"tax_amount"`
+			Total       decimal.Decimal `json:"total"`
+		} `json:"items"`
+	}
+	if err := a.Acc.Do(ctx, u.Cred, accountingGet(fmt.Sprintf("%s/%s/%d", base, kinds, tg.EntityID)), &x); err != nil {
+		return nil, err
+	}
+	title := pick(lang, artifactNames[x.Side+"_"+x.Kind])
+	var company struct {
+		Name         string `json:"name"`
+		NameEn       string `json:"name_en"`
+		BaseCurrency string `json:"base_currency"`
+	}
+	_ = a.Acc.Do(ctx, u.Cred, accountingGet("/company"), &company)
+	us := company.Name
+	if lang == "en" && company.NameEn != "" {
+		us = company.NameEn
+	}
+	seller, buyer := us, x.PartyName
+	if x.Side == "purchase" {
+		seller, buyer = x.PartyName, us
+	}
+	date := func(d string) string {
+		d = d[:min(10, len(d))]
+		if lang == "fa" {
+			if t, _, err := normalize.Date(d); err == nil {
+				return normalize.FormatJalali(t.Year(), int(t.Month()), t.Day())
+			}
+		}
+		return d
+	}
+	var meta []map[string]string
+	if x.DueDate != nil && *x.DueDate != "" {
+		meta = append(meta, kv(tr(lang, "Due date", "سررسید"), date(*x.DueDate)))
+	}
+	if x.Reference != "" {
+		meta = append(meta, kv(tr(lang, "Reference", "شماره مرجع"), x.Reference))
+	}
+	var rows []map[string]any
+	for i, it := range x.Items {
+		desc := it.Description
+		if it.ProductName != nil && *it.ProductName != "" {
+			desc = strings.Trim(*it.ProductName+" — "+it.Description, " —")
+		}
+		rows = append(rows, map[string]any{"cells": []string{strconv.Itoa(i + 1), desc, it.Quantity.String(), it.Unit,
+			it.UnitPrice.String(), it.Discount.String(), it.TaxAmount.String(), it.Total.String()}})
+	}
+	col := func(l, al string) map[string]string { return map[string]string{"label": l, "align": al} }
+	grand := tr(lang, "Grand total", "جمع کل")
+	if company.BaseCurrency != "" {
+		grand += " (" + company.BaseCurrency + ")"
+	}
+	totals := []map[string]any{
+		{"label": tr(lang, "Subtotal", "جمع"), "value": x.Subtotal.String()},
+		{"label": tr(lang, "Discount", "تخفیف"), "value": x.DiscountTotal.String()},
+		{"label": tr(lang, "Tax", "مالیات"), "value": x.TaxTotal.String()},
+		{"label": grand, "value": x.Total.String(), "strong": true},
+	}
+	if x.Status == "posted" && x.Kind != "quotation" {
+		totals = append(totals, map[string]any{"label": tr(lang, "Paid", "پرداخت‌شده"), "value": x.PaidAmount.String()},
+			map[string]any{"label": tr(lang, "Outstanding", "مانده"), "value": x.Outstanding.String(), "strong": true})
+	}
+	doc := map[string]any{"title": title, "number": strconv.FormatInt(x.Number, 10), "date": date(x.Date), "lang": lang, "meta": meta,
+		"parties": []map[string]any{{"title": tr(lang, "Seller", "فروشنده"), "name": seller}, {"title": tr(lang, "Buyer", "خریدار"), "name": buyer}},
+		"tables": []map[string]any{{"columns": []map[string]string{col("#", "center"), col(tr(lang, "Item", "شرح کالا/خدمت"), "start"),
+			col(tr(lang, "Qty", "مقدار"), "end"), col(tr(lang, "Unit", "واحد"), "start"), col(tr(lang, "Unit price", "فی"), "end"),
+			col(tr(lang, "Discount", "تخفیف"), "end"), col(tr(lang, "Tax", "مالیات"), "end"), col(tr(lang, "Total", "جمع"), "end")}, "rows": rows}},
+		"totals": totals, "notes": x.Notes, "signatures": []string{tr(lang, "Seller", "فروشنده"), tr(lang, "Buyer", "خریدار")}}
+	return json.Marshal(doc)
 }
 
 func pick(lang string, t [2]string) string {
@@ -570,6 +791,10 @@ func (a *Agent) query(ctx context.Context, u *User, t *store.Task, st *State, e 
 			e.Emit("table", rows)
 		}
 		e.Emit("message", map[string]any{"text": text})
+		if route != "" && st.humanUI() {
+			a.navigateOnScreen(ctx, u, t, st, e, route) // menu click with the pointer
+			return
+		}
 		if route != "" {
 			e.Emit("navigate", map[string]any{"route": route})
 		}
@@ -736,5 +961,14 @@ func (a *Agent) chat(ctx context.Context, u *User, t *store.Task, st *State, e E
 	st.Stage, st.Message = StageDone, res.Text
 	a.save(ctx, t, st)
 	a.audit(ctx, u, t.ID, "chat", map[string]any{"model": res.Model, "chars": len(res.Text)})
+	if actionClaim.MatchString(normalize.Text(res.Text)) {
+		// a chat answer cannot register anything: never let it read as if it did
+		a.audit(ctx, u, t.ID, "chat_claim_flagged", map[string]any{"text": truncate(res.Text, 300)})
+		e.Emit("message", map[string]any{"text": tr(st.Lang, "Note: nothing has been registered by this answer. To register it, say «register it» with the details.",
+			"توجه: با این پاسخ چیزی ثبت نشده است. اگر می‌خواهید ثبت شود، با جزئیات بگویید «ثبتش کن».")})
+	}
 	e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
 }
+
+// actionClaim: a chat answer that says something was (or is being) registered or done.
+var actionClaim = regexp.MustCompile(`(ثبت (کردم|شد|می کنم|میکنم|خواهم کرد|کردیم)|انجام (دادم|شد|می دهم|میدهم)|ذخیره (کردم|شد)|\bi('ll|'ve| have| will| am going to)? (registered|recorded|saved|register|record)|has been (registered|recorded|saved))`)

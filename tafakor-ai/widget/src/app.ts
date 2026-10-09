@@ -2,8 +2,8 @@ import css from './styles.css';
 import * as api from './api';
 import { h, icon, session, store } from './dom';
 import { actionName, lang, num, t } from './i18n';
-import { runPlan, type UIPlan } from './agent/executor';
-import { Cursor } from './agent/cursor';
+import { runPlan, watchUserSave, type UIPlan } from './agent/executor';
+import { Cursor, type Speed } from './agent/cursor';
 import { navigate } from './agent/drivers';
 
 interface Me {
@@ -21,6 +21,9 @@ interface Settings {
   auto_actions: string[];
   simulation: boolean;
   voice_reply: boolean;
+  // How the assistant operates by default: the real screen with a pointer, or the application services.
+  exec_preference?: 'human_ui' | 'direct';
+  exec_speed?: 'instant' | 'normal' | 'human';
 }
 interface Pending {
   id: string;
@@ -409,7 +412,7 @@ class Widget {
     this.tab = 'chat';
     this.renderTabs();
     this.show();
-    await this.run('/tasks', { message: text, uploads, ask_this_time: this.askThisTime, exec_mode: store('exec') ?? 'ui', transcript,
+    await this.run('/tasks', { message: text, uploads, ask_this_time: this.askThisTime, transcript, ui_capable: true,
       conversation_id: session('conv') ?? '' });
   }
 
@@ -498,7 +501,7 @@ class Widget {
             turn.insertBefore(this.uiFailedCard(d), statusEl);
             break;
           case 'done':
-            if (d.stage !== 'ui_running' && d.stage !== 'awaiting_answer' && d.stage !== 'awaiting_approval' && d.stage !== 'ui_failed') session('task', null);
+            if (d.stage !== 'ui_running' && d.stage !== 'awaiting_answer' && d.stage !== 'awaiting_approval' && d.stage !== 'ui_failed' && d.stage !== 'ui_preview') session('task', null);
             break;
         }
         scroll();
@@ -547,7 +550,15 @@ class Widget {
       await this.run(`/tasks/${taskId}/answer`, { question_id: q.id, value, remember: remember.checked });
     };
     if (q.free_text) {
-      const inp = h('input', { type: 'text', dir: 'ltr', inputmode: 'decimal' }) as HTMLInputElement;
+      // Persian names and words are typed here as well as numbers: the direction
+      // follows the text and only an amount question opens the numeric keyboard.
+      const numeric = q.field === 'amount' || q.field === 'fx_rate';
+      const inp = h('input', numeric ? { type: 'text', dir: 'ltr', inputmode: 'decimal' } : { type: 'text', dir: 'auto' }) as HTMLInputElement;
+      inp.addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter' && inp.value.trim()) void answer(inp.value.trim()); });
+      if (q.options?.length) {
+        card.append(h('div', { class: 'opts' }, ...q.options.map((o: any) =>
+          h('button', { class: 'btn' + (o.recommended ? ' rec' : ''), onclick: () => void answer(o.value) }, o.label))));
+      }
       card.append(h('div', { class: 'form' }, inp), h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: () => inp.value.trim() && void answer(inp.value.trim()) }, t('send'))));
     } else {
       card.append(h('div', { class: 'opts' }, ...(q.options ?? []).map((o: any) =>
@@ -578,7 +589,8 @@ class Widget {
       const li = h('li', {}, h('div', {}, h('b', {}, s.purpose || s.tool), ' ', h('span', { class: 'tag' }, badge),
         s.critical ? h('span', { class: 'tag critical' }, t('critical')) : null),
         s.critical ? h('div', { class: 'hint critical-text' }, t('criticalHelp')) : null,
-        h('div', { class: 'hint', dir: 'ltr' }, `${s.method} ${s.path}`),
+        // the operation as the user thinks of it (create_customer), never the raw endpoint
+        s.operation ? h('div', { class: 'hint', dir: 'ltr' }, s.operation) : null,
         s.accounting_impact ? h('div', { class: 'hint' }, s.accounting_impact) : null,
         s.amounts?.length ? h('div', { class: 'plan-amounts', dir: 'ltr' }, (s.amounts as string[]).join(' · ')) : null);
       const det = h('details', {}, h('summary', { class: 'hint' }, t('details')), h('pre', { class: 'args', dir: 'ltr' }, JSON.stringify(s.args, null, 1)));
@@ -586,6 +598,8 @@ class Widget {
       list.append(li);
     }
     card.append(list);
+    // the user's files are attached to the record this plan registers
+    if (p.display?.attachment) card.append(h('div', { class: 'hint' }, `${t('attachment')}: ${p.display.attachment}`));
     this.lastPreview = p;
     return card;
   }
@@ -610,6 +624,12 @@ class Widget {
     for (const n of p.notes ?? []) card.append(h('div', { class: 'hint' }, n));
     for (const m of p.duplicates ?? []) card.append(h('div', { class: 'reason warn' }, `${t('duplicateFound')} #${num(m.candidate.Number ?? m.candidate.number ?? '')} (${m.candidate.Date ?? ''}, ${num(String(m.candidate.Amount ?? ''))})`));
     if (p.decision?.simulated) card.append(h('div', { class: 'reason ok' }, t('simulated')));
+    // An explicit "register directly" overrides soft checks (a configured amount cap, the
+    // automatic-mode switch). There is no approval card in that case, so report it here:
+    // the user must see that it ran above their own limit.
+    if (p.decision?.action === 'DIRECT') {
+      for (const w of p.warnings ?? []) card.append(h('div', { class: 'reason warn' }, w.text));
+    }
     this.lastPreview = p;
     return card;
   }
@@ -617,17 +637,24 @@ class Widget {
   approvalCard(a: any) {
     const taskId = a.task_id ?? session('task');
     const reasons: { code: string; text: string }[] = a.reasons ?? [];
+    const warnings: { code: string; text: string }[] = a.warnings ?? [];
     const card = h('div', { class: 'card' },
-      h('div', { class: 'reason' + (a.duplicate ? ' warn' : '') }, `${t('waiting')}: ${reasons.map((r) => r.text).join('؛ ') || '—'}`));
+      h('div', { class: 'reason' + (a.duplicate ? ' warn' : '') }, `${t('waiting')}: ${reasons.map((r) => r.text).join('؛ ') || '—'}`),
+      ...warnings.map((w) => h('div', { class: 'reason warn' }, w.text)));
     const disable = () => card.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
-    const exec = store('exec') ?? 'ui';
-    const execSel = h('select', { 'aria-label': 'execution' },
-      h('option', { value: 'ui', selected: exec === 'ui' }, t('executionUI')), h('option', { value: 'api', selected: exec === 'api' }, t('executionAPI'))) as HTMLSelectElement;
-    execSel.addEventListener('change', () => store('exec', execSel.value));
     const confirmBtn = h('button', { class: 'btn primary', onclick: async () => {
       disable();
-      await this.run(`/tasks/${taskId}/approve`, { token: a.token, payload_hash: a.payload_hash, exec_mode: execSel.value });
+      // the execution mode is resolved by the server (your words, then your setting, then the screen)
+      await this.run(`/tasks/${taskId}/approve`, { token: a.token, payload_hash: a.payload_hash });
     } }, a.duplicate ? t('registerAnyway') : t('confirm'));
+    // An explicit, per-operation choice of how to carry it out. Never chosen silently.
+    const humanUI = a.exec_mode !== 'direct';
+    // only a mode the runtime can actually carry out is offered (the server's capability registry)
+    const canSwitch = humanUI ? a.can_direct !== false : a.can_ui !== false;
+    const modeBtn = !canSwitch ? null : h('button', { class: 'btn', onclick: async () => {
+      disable();
+      await this.run(`/tasks/${taskId}/approve`, { token: a.token, payload_hash: a.payload_hash, exec_mode: humanUI ? 'direct' : 'human_ui' });
+    } }, humanUI ? t('runDirectly') : t('runOnScreen'));
     const cancelBtn = h('button', { class: 'btn', onclick: async () => {
       disable();
       await api.send('POST', `/tasks/${taskId}/cancel`).catch(() => undefined);
@@ -635,7 +662,18 @@ class Widget {
       card.append(h('div', { class: 'hint' }, t('cancel') + ' ✓'));
     } }, t('cancel'));
     const reviewBtn = h('button', { class: 'btn', onclick: () => { card.append(this.reviewForm(taskId)); reviewBtn.setAttribute('disabled', ''); } }, t('review'));
-    card.append(h('div', { class: 'actions' }, cancelBtn, reviewBtn, confirmBtn), h('div', { class: 'form' }, execSel));
+    // "Show me on screen" opens the operation's real form, pre-filled, and registers nothing:
+    // the user reviews and saves it by hand. It is not the same as Review (a summary here).
+    const actions = h('div', { class: 'actions' }, cancelBtn, reviewBtn);
+    if (a.can_preview !== false) {
+      actions.append(h('button', { class: 'btn', onclick: async () => {
+        disable();
+        await this.run(`/tasks/${taskId}/approve`, { token: a.token, payload_hash: a.payload_hash, exec_mode: 'ui', preview: true });
+      } }, t('executionUI')));
+    }
+    if (modeBtn) actions.append(modeBtn);
+    actions.append(confirmBtn);
+    card.append(actions, h('div', { class: 'hint' }, humanUI ? t('modeHintScreen') : t('modeHintDirect')), h('div', { class: 'hint' }, t('previewHint')));
     return card;
   }
 
@@ -694,6 +732,12 @@ class Widget {
       if (d.undo_available) actions.append(h('button', { class: 'btn danger', onclick: () => window.confirm(t('undoConfirm')) && void this.run(`/tasks/${tid}/undo`, {}) }, t('undo')));
     }
     void taskId;
+    // the original files, stored on the record in the application
+    if (r.files?.length) {
+      card.append(h('div', { class: 'hint' }, t('attachedFiles')),
+        h('ul', { class: 'files' }, ...r.files.map((f: any) =>
+          h('li', {}, h('a', { href: f.url, target: '_blank', rel: 'noopener' }, f.name)))));
+    }
     card.append(actions);
     return card;
   }
@@ -721,14 +765,20 @@ class Widget {
 
   uiFailedCard(d: any) {
     const taskId = d.task_id;
+    // one choice per card: pressing either disables both
+    const once = (fn: () => void) => (e: Event) => {
+      (e.currentTarget as HTMLElement).closest('.card')?.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+      fn();
+    };
     return h('div', { class: 'card' }, h('div', { class: 'reason warn' }, d.message), h('div', { class: 'actions' },
-      h('button', { class: 'btn', onclick: () => void this.retryUI(taskId) }, t('retry')),
-      d.can_fallback ? h('button', { class: 'btn primary', onclick: () => void this.run(`/tasks/${taskId}/ui-result`, { ok: false, fallback_api: true }) }, t('uiFailedFallback')) : null));
+      d.can_retry === false ? null : h('button', { class: 'btn', onclick: once(() => void this.retryUI(taskId)) }, t('retry')),
+      d.can_fallback ? h('button', { class: 'btn primary', onclick: once(() => void this.run(`/tasks/${taskId}/ui-result`, { ok: false, fallback_api: true })) }, t('uiFailedFallback')) : null));
   }
 
+  /** Retry / resume a screen task: the server first checks whether the form was already
+   *  saved (then the step completes with that record) and only otherwise hands back the plan. */
   async retryUI(taskId: string) {
-    const task = await api.get<any>(`/tasks/${taskId}`);
-    if (task.ui_plan) await this.runUI({ ...task.ui_plan, task_id: taskId });
+    await this.run(`/tasks/${taskId}/resume-ui`, {});
   }
 
   // ---------- UI agent ----------
@@ -745,11 +795,35 @@ class Widget {
       onclick: () => { this.abortUI = true; } }, t('cancel'));
     this.root.append(stop);
     this.abortUI = false;
+    // pointer speed: debug override in localStorage, else the user's setting, else "human" (visible travel time)
+    let speed: string | null = null;
+    try { speed = localStorage.getItem('tafakor-ai.speed'); } catch { /* storage may be blocked */ }
+    this.cursor.speed = (['instant', 'normal', 'human'].includes(speed ?? '') ? speed : this.me?.settings.exec_speed ?? 'human') as Speed;
     const res = await runPlan(plan, this.cursor, (label) => { statusEl.replaceChildren(h('span', { class: 'spinner' }), label); this.cursor.label.textContent = label; }, () => this.abortUI);
     stop.remove();
     statusEl.remove();
-    if (wasOpen) this.toggle(true);
+    // A preview leaves the real form open for the user to fill in and save: stay out of the way.
+    if (wasOpen && !res.preview) this.toggle(true);
     await this.run(`/tasks/${plan.task_id}/ui-result`, res);
+    // The form is now the user's: when they save it themselves, let the server find the
+    // new record and attach the source document to it.
+    if (res.ok && res.preview) void this.watchManualSave(plan);
+  }
+
+  watching = '';
+
+  async watchManualSave(plan: UIPlan) {
+    if (this.watching === plan.task_id) return;
+    this.watching = plan.task_id;
+    try {
+      const w = await watchUserSave(plan, this.cursor);
+      if (this.watching !== plan.task_id || !w.closed) return;
+      // closed without pressing save: the server still checks, quietly
+      await this.run(`/tasks/${plan.task_id}/ui-result`, { ok: true, failed_step: -1, error: '', preview: true, user_saved: w.saved, closed: true });
+      if (this.panel.hidden) { this.badge++; this.renderBadge(); }
+    } finally {
+      if (this.watching === plan.task_id) this.watching = '';
+    }
   }
 
   abortUI = false;
@@ -789,7 +863,7 @@ class Widget {
       } else if (task.stage === 'ui_running' && task.ui_plan) {
         const card = h('div', { class: 'card' }, h('h4', {}, t('resumeQ')), h('div', { class: 'actions' },
           h('button', { class: 'btn', onclick: async () => { await api.send('POST', `/tasks/${task.id}/cancel`).catch(() => undefined); card.remove(); } }, t('cancel')),
-          h('button', { class: 'btn primary', onclick: async () => { card.remove(); await this.runUI({ ...task.ui_plan, task_id: task.id }); } }, t('resume'))));
+          h('button', { class: 'btn primary', onclick: async () => { card.remove(); await this.retryUI(task.id); } }, t('resume'))));
         this.chatLog.append(card);
       }
     }
@@ -803,7 +877,7 @@ class Widget {
     if (!id) return;
     try {
       const task = await api.get<any>(`/tasks/${id}`);
-      if (!['awaiting_answer', 'awaiting_approval', 'ui_running', 'ui_failed'].includes(task.stage)) {
+      if (!['awaiting_answer', 'awaiting_approval', 'ui_running', 'ui_failed', 'ui_preview'].includes(task.stage)) {
         session('task', null);
         return;
       }
@@ -813,9 +887,10 @@ class Widget {
         h('button', { class: 'btn', onclick: async () => { await api.send('POST', `/tasks/${id}/cancel`).catch(() => undefined); session('task', null); card.remove(); } }, t('cancel')),
         h('button', { class: 'btn primary', onclick: async () => {
           card.remove();
-          if (task.stage === 'ui_running' && task.ui_plan) await this.runUI({ ...task.ui_plan, task_id: id });
+          if (task.stage === 'ui_running' && task.ui_plan) await this.retryUI(id);
           else if (task.stage === 'awaiting_answer' && task.proposal?.question) this.chatLog.append(this.questionCard(task.proposal.question));
           else if (task.stage === 'ui_failed') this.chatLog.append(this.uiFailedCard({ task_id: id, message: task.message || t('stopped'), can_fallback: true }));
+          else if (task.stage === 'ui_preview') this.chatLog.append(h('div', { class: 'msg ai' }, t('previewHint')));
           else if (task.stage === 'awaiting_approval') this.chatLog.append(h('div', { class: 'msg ai' }, lang() === 'fa' ? 'تایید قبلی منقضی شده؛ لطفاً درخواست را دوباره بفرستید.' : 'The earlier approval card expired; please send the request again.'));
         } }, t('resume')));
       card.append(actions);
@@ -888,7 +963,20 @@ class Widget {
     sim.checked = s.simulation;
     const voice = h('input', { type: 'checkbox' }) as HTMLInputElement;
     voice.checked = s.voice_reply;
-    const form = h('div', { class: 'form' }, h('h4', {}, t('limits')),
+    const pref = (v: 'human_ui' | 'direct') => {
+      const r = h('input', { type: 'radio', name: 'exec_pref', value: v }) as HTMLInputElement;
+      r.checked = (s.exec_preference ?? 'human_ui') === v;
+      return r;
+    };
+    const prefUI = pref('human_ui');
+    const prefDirect = pref('direct');
+    const speedSel = h('select', {}, ...(['human', 'normal', 'instant'] as const).map((v) => h('option', { value: v }, t(`speed_${v}` as 'speed_human')))) as HTMLSelectElement;
+    speedSel.value = s.exec_speed ?? 'human';
+    const form = h('div', { class: 'form' }, h('h4', {}, t('execPref')),
+      h('label', { class: 'inline' }, prefUI, t('execPrefUI')), h('label', { class: 'inline' }, prefDirect, t('execPrefDirect')),
+      h('div', { class: 'hint' }, t('execPrefHint')),
+      h('label', {}, t('execSpeed'), speedSel),
+      h('h4', {}, t('limits')),
       h('label', {}, t('maxAmount', { cur }), maxAmt), h('label', {}, t('maxPerDay'), perDay),
       h('div', {}, t('autoActions')), ...actions,
       h('label', { class: 'inline' }, sim, t('simulation')),
@@ -900,6 +988,8 @@ class Widget {
             max_per_day: Number(perDay.value) || 0,
             auto_actions: actions.map((l) => l.querySelector('input') as HTMLInputElement).filter((c) => c.checked).map((c) => c.value),
             simulation: sim.checked, voice_reply: voice.checked,
+            exec_preference: prefDirect.checked ? 'direct' : 'human_ui',
+            exec_speed: speedSel.value,
           };
           this.me!.settings = await api.send<Settings>('PUT', '/settings', body);
           this.toast(t('saved'));

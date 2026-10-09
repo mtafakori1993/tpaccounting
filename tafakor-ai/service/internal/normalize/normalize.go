@@ -4,6 +4,8 @@
 package normalize
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -126,6 +128,49 @@ func MaskSensitive(s string) string {
 		}
 		return Card(m)
 	})
+}
+
+// amountKey: fields that hold money or quantities — never masked (a 1,200,000,000 rial
+// amount is not a card number).
+var amountKey = regexp.MustCompile(`(?i)(amount|total|price|balance|salary|upto|ceiling|rate|exemption|quantity|debit|credit|limit|wage|cost|value|_id$|^id$|number$)`)
+
+// MaskJSON masks sensitive numbers inside a JSON document's string values. Numbers and
+// amount-like fields are left alone and the result stays valid JSON (masking the text
+// of the document turned a large amount into ******0000 and broke the whole audit
+// trace). Input that is not JSON is masked as text.
+func MaskJSON(b []byte) []byte {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return []byte(MaskSensitive(string(b)))
+	}
+	var walk func(key string, x any) any
+	walk = func(key string, x any) any {
+		switch t := x.(type) {
+		case map[string]any:
+			for k, y := range t {
+				t[k] = walk(k, y)
+			}
+			return t
+		case []any:
+			for i, y := range t {
+				t[i] = walk(key, y)
+			}
+			return t
+		case string:
+			if amountKey.MatchString(key) {
+				return t
+			}
+			return MaskSensitive(t)
+		}
+		return x
+	}
+	out, err := json.Marshal(walk("", v))
+	if err != nil {
+		return []byte(MaskSensitive(string(b)))
+	}
+	return out
 }
 
 var (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -98,17 +99,25 @@ func TestPlannerGetsFeedbackForInventedToolsAndFields(t *testing.T) {
 	h := newHarness(t, "admin")
 	h.ai.interp = `{"intent":"operate","user_requested_registration":true}`
 	h.ai.planQueue = []string{
-		`{"action":"plan","steps":[{"id":"s1","tool":"parties.magic_create","body":{"name":"X"}}]}`,
-		`{"action":"plan","steps":[{"id":"s1","tool":"parties.create","body":{"name":"X","favourite_color":"blue"}}]}`,
-		`{"action":"plan","summary":"create X","steps":[{"id":"s1","tool":"parties.create","body":{"name":"X","kind":"company","is_customer":true}}]}`,
+		`{"action":"plan","steps":[{"id":"s1","tool":"parties.magic_create","body":{"name":"Zeta Trading"}}]}`,
+		`{"action":"plan","steps":[{"id":"s1","tool":"parties.create","body":{"name":"Zeta Trading","favourite_color":"blue"}}]}`,
+		`{"action":"plan","summary":"create Zeta Trading","steps":[{"id":"s1","tool":"parties.create","body":{"name":"Zeta Trading","kind":"company","is_customer":true}}]}`,
 	}
-	r, _ := talk(t, h, "", "create customer X")
-	if r.Last("approval") == nil {
+	r, _ := talk(t, h, "", "create customer Zeta Trading")
+	// a routine customer creation the user asked for runs directly (D40)
+	if r.Last("result") == nil {
 		t.Fatalf("valid plan expected after feedback: %+v", r.Events)
 	}
+	// an invented tool is fed back; an invented FIELD is dropped and shown on the card
+	// (audit 2026-10-08: rejecting it looped until the task stopped)
 	p := h.ai.planPrompts
-	if len(p) != 3 || !strings.Contains(p[1], "unknown tool parties.magic_create") || !strings.Contains(p[2], `unknown field "favourite_color"`) {
+	if len(p) != 3 || !strings.Contains(p[1], "unknown tool parties.magic_create") || !strings.Contains(p[2], `"kind":"invalid"`) {
 		t.Fatalf("validation feedback missing:\n%s", strings.Join(p, "\n-----\n"))
+	}
+	for _, x := range h.acc.parties {
+		if _, bad := x["favourite_color"]; bad {
+			t.Fatal("an unknown field must never reach the application")
+		}
 	}
 }
 
@@ -122,7 +131,13 @@ func TestSecurityOperationsRunWithApprovalAndAGeneratedPassword(t *testing.T) {
 		`{"action":"plan","steps":[{"id":"s1","tool":"users.create","body":{"email":"ali@demo.test","full_name":"Ali","role_id":2,"password":"hunter2hunter2"}}]}`,
 		`{"action":"plan","summary":"create user Ali","steps":[{"id":"s1","tool":"users.create","body":{"email":"ali@demo.test","full_name":"Ali","role_id":2,"password":"$generate"},"purpose":"create user Ali"}]}`,
 	}
-	r, _ := talk(t, h, "", "make a new user for Ali")
+	// the role must be one the user named (an invented role_id is refused, D64)
+	h.user.Me.Permissions = append(h.user.Me.Permissions, "roles.view")
+	h.acc.extra.HandleFunc("GET /api/v1/roles", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"id":1,"name":"admin","label":"Administrator"},{"id":2,"name":"accountant","label":"Accountant"}]`))
+	})
+	r, _ := talk(t, h, "", "make a new user for Ali with the accountant role")
 	if !strings.Contains(h.ai.planPrompts[1], "never write a password") {
 		t.Fatalf("a model-written password must be refused:\n%s", h.ai.planPrompts[1])
 	}
@@ -205,9 +220,22 @@ func TestFixedFlowDeadEndsAreHandedToThePlanner(t *testing.T) {
 	h := newHarness(t, "admin")
 	h.ai.queue = []string{`{"intent":"register","user_requested_registration":true,"event":{"type":"transfer","amount":"10000000","currency":"IRT","date":"2025-10-07"}}`}
 	h.ai.planQueue = []string{`{"action":"plan","summary":"transfer","steps":[{"id":"s1","tool":"treasury.transactions.create","body":{"kind":"transfer","date":"2025-10-07","treasury_account_id":1,"to_treasury_account_id":2,"amount":"100000000"},"purpose":"transfer cash to bank"}]}`}
-	r, _ := talk(t, h, "", "۱۰ میلیون تومان از صندوق به بانک منتقل کن")
+	h.acc.extra.HandleFunc("GET /api/v1/treasury/accounts", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 1, "kind": "cash", "name": "صندوق مرکزی", "is_active": true},
+			{"id": 2, "kind": "bank", "name": "بانک ملت جاری", "is_active": true}, {"id": 3, "kind": "bank", "name": "بانک سامان", "is_active": true}})
+	})
+	r, conv := talk(t, h, "", "۱۰ میلیون تومان از صندوق به بانک منتقل کن")
+	// (audit 2026-10-08) transfers are built deterministically; «بانک» is ambiguous
+	// when the company has several bank accounts, so it is asked — never guessed
+	if q := questions(r); len(q) == 1 && strings.Contains(q[0], "بانک ملت جاری") {
+		r, _ = talk(t, h, conv, "بانک ملت جاری")
+	}
 	if r.Last("approval") == nil {
 		t.Fatalf("transfer must be planned: %+v", r.Events)
+	}
+	pv := r.Last("preview").(map[string]any)["steps"].([]map[string]any)
+	if !strings.Contains(string(pv[0]["args"].(json.RawMessage)), `"amount":"100000000"`) {
+		t.Fatalf("10 million toman = 100,000,000 rial: %s", pv[0]["args"])
 	}
 	for _, ev := range r.Events {
 		if strings.Contains(fmt.Sprint(ev.Data), "Treasury →") || strings.Contains(fmt.Sprint(ev.Data), "پشتیبانی نمی") {

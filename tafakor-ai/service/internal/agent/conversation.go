@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/tafakorpardazan/tafakor-ai/internal/classify"
+	"github.com/tafakorpardazan/tafakor-ai/internal/ctxconflict"
+	"github.com/tafakorpardazan/tafakor-ai/internal/intent"
 	"github.com/tafakorpardazan/tafakor-ai/internal/provider"
 	"github.com/tafakorpardazan/tafakor-ai/internal/store"
 	"github.com/tafakorpardazan/tafakor-ai/internal/tools"
@@ -34,11 +36,49 @@ type ConvMessage struct {
 type ConvState struct {
 	Messages   []ConvMessage `json:"messages"`
 	ActiveTask string        `json:"active_task,omitempty"`
+	// Active is the document the conversation is about right now: the last one the
+	// assistant created, changed or was told about. A later pronoun (این / همین / رسیدش /
+	// pdf این / that one) binds to it instead of searching the database.
+	Active *Artifact `json:"active,omitempty"`
+	// Artifacts is the recent document stack (newest last) and Entities the latest
+	// artifact per canonical type, so "همین فاکتور" and "رسیدش" can both resolve.
+	Artifacts []Artifact          `json:"artifacts,omitempty"`
+	Entities  map[string]Artifact `json:"entities,omitempty"`
+	// Pending: files sent in a turn that registered nothing, inherited by the next request.
+	Pending *PendingUploads `json:"pending_uploads,omitempty"`
 }
 
 type conversation struct {
 	row   store.Conversation
 	state ConvState
+}
+
+// remember records a document the assistant produced (or was told about) as the
+// conversation's active artifact. Called from the recorder, so every path that emits
+// an artifact event persists it, including across a page refresh.
+func (c *conversation) remember(a Artifact) {
+	if a.Type == "" || a.ID == 0 {
+		return
+	}
+	if a.At == 0 {
+		a.At = time.Now().UTC().Unix()
+	}
+	c.state.Active = &a
+	// a document referenced again moves to the top instead of appearing twice
+	kept := c.state.Artifacts[:0]
+	for _, x := range c.state.Artifacts {
+		if x.Type != a.Type || x.ID != a.ID {
+			kept = append(kept, x)
+		}
+	}
+	c.state.Artifacts = append(kept, a)
+	if n := len(c.state.Artifacts); n > 20 {
+		c.state.Artifacts = c.state.Artifacts[n-20:]
+	}
+	if c.state.Entities == nil {
+		c.state.Entities = map[string]Artifact{}
+	}
+	c.state.Entities[a.Type] = a
 }
 
 func (c *conversation) add(m ConvMessage) {
@@ -146,6 +186,11 @@ func (r *recorder) Emit(event string, data any) {
 		r.conv.add(ConvMessage{Role: "assistant", Kind: "error", Text: str("message"), TaskID: r.task})
 	case "approval":
 		r.conv.add(ConvMessage{Role: "assistant", Kind: "approval", Text: "Waiting for approval", TaskID: r.task, Data: raw})
+	case "artifact":
+		var a Artifact
+		if json.Unmarshal(raw, &a) == nil {
+			r.conv.remember(a)
+		}
 	case "preview":
 		r.conv.add(ConvMessage{Role: "assistant", Kind: "preview", Text: "", TaskID: r.task, Data: raw})
 	case "result":
@@ -211,6 +256,61 @@ var answerKeys = map[string][]string{
 
 // followUp merges a new user message into the open operation and continues it.
 func (a *Agent) followUp(ctx context.Context, u *User, t *store.Task, st *State, text string, c *conversation, e Emitter) {
+	// «تأیید و ثبت» after "show me on screen": register the exact payload the user
+	// reviewed on the real form — never re-plan or re-interpret it.
+	// The user may already have saved the open form themselves: never register it a
+	// second time; finish with their record and attach the file to it (D46).
+	if st.Stage == StageUIPreview && a.completeHandSaved(ctx, u, t, st, e, true) {
+		return
+	}
+	if st.Stage == StageUIPreview && classify.DetectConfirm(text) {
+		a.confirmPreview(ctx, u, t, st, e)
+		return
+	}
+	// A self-contained NEW request (the domain layer recognises a complete operation
+	// in it) is not an answer to the open one: merging it lost the second request. The
+	// open operation is closed — the user is told it was not registered — and the new
+	// one starts.
+	// A stopped / screen-failed task is not reopened by a different complete request
+	// (D62: the antenna receipt was merged into a stuck plan and failed again).
+	newRequest := ctxconflict.IsCommand(text) && !ctxconflict.Anaphoric(text) && !isRetry(text) && ctxconflict.Normalize(text) != ctxconflict.Normalize(st.UserText)
+	// On an approval card a different complete request is not an edit of it (D62: «برای
+	// پروژه وب‌سایت یه هزینه ثبت کن» was merged into a pending cost-centre delete).
+	if st.Stage == StageApproval && st.Plan != nil && newRequest && !classify.DetectConfirm(text) {
+		prev := st.UserText
+		st.Stage, st.Message = StageCancelled, "superseded"
+		a.save(ctx, t, st)
+		a.audit(ctx, u, t.ID, "superseded", map[string]any{"by": text, "from_stage": StageApproval})
+		e.Emit("message", map[string]any{"text": tr(st.Lang, "The earlier request («"+truncate(prev, 80)+"») was not registered; I'm doing the new one.",
+			"درخواست قبلی («"+truncate(prev, 80)+"») ثبت نشد و کنار گذاشته شد؛ درخواست جدید را انجام می‌دهم.")})
+		a.startTask(ctx, u, StartRequest{Message: text, ExecMode: st.ExecMode, RequestID: st.RequestID}, c, e)
+		return
+	}
+	if (st.Stage == StageStopped || st.Stage == StageUIFailed) && newRequest {
+		st.Stage, st.Message = StageCancelled, "superseded"
+		a.save(ctx, t, st)
+		a.audit(ctx, u, t.ID, "superseded", map[string]any{"by": text, "from_stage": "stopped_or_ui_failed"})
+		a.startTask(ctx, u, StartRequest{Message: text, ExecMode: st.ExecMode, RequestID: st.RequestID}, c, e)
+		return
+	}
+	if st.Stage == StageApproval || st.Stage == StageQuestion {
+		if d := intent.Detect(text); d.Domain != intent.General && d.Domain != intent.Memory && d.Domain != intent.Documents {
+			prev := st.UserText
+			st.Stage, st.Message = StageCancelled, "superseded"
+			a.save(ctx, t, st)
+			a.audit(ctx, u, t.ID, "superseded", map[string]any{"by": text, "domain": d.Domain})
+			e.Emit("message", map[string]any{"text": tr(st.Lang, "The earlier request («"+truncate(prev, 80)+"») was not registered; I'm doing the new one.",
+				"درخواست قبلی («"+truncate(prev, 80)+"») ثبت نشد و کنار گذاشته شد؛ درخواست جدید را انجام می‌دهم.")})
+			a.startTask(ctx, u, StartRequest{Message: text, ExecMode: st.ExecMode}, c, e)
+			return
+		}
+	}
+	// a follow-up may add the execution instruction ("مستقیم ثبت کن", "نشانم بده")
+	if d, p := classify.DetectExecutionIntent(text); d || p {
+		st.ExecDirect, st.ExecPreview = d, p
+	}
+	// «مستقیم انجام بده» / «با موس انجام بده» in a follow-up changes HOW the same operation runs
+	a.resolveExecMode(ctx, u, st, text, "")
 	if st.Plan != nil {
 		a.planFollowUp(ctx, u, t, st, text, c, e)
 		return
@@ -230,7 +330,7 @@ func (a *Agent) followUp(ctx context.Context, u *User, t *store.Task, st *State,
 		}
 	}
 	it, res, err := classify.Interpret(ctx, ai, model, classify.InterpretInput{UserText: text, History: hist, Frame: st.Frame, Config: cfg,
-		Hints: a.hints(ctx, u), Knowledge: a.Knowledge, Today: a.today(), Lang: st.Lang})
+		Hints: a.hints(ctx, u), Knowledge: a.Knowledge, Today: a.today(), Lang: st.Lang, Documents: c.referenceContext()})
 	a.cost(ctx, u, t.ID, res)
 	if err != nil {
 		a.fail(ctx, u, t, st, e, a.plain(st.Lang, err), err)
@@ -297,6 +397,12 @@ func (a *Agent) ConversationView(ctx context.Context, u *User, id string) (map[s
 	var st ConvState
 	_ = json.Unmarshal(row.State, &st)
 	out := map[string]any{"id": row.ID, "version": row.Version, "messages": st.Messages, "active_task": st.ActiveTask}
+	if st.Active != nil {
+		out["active"] = st.Active
+	}
+	if len(st.Artifacts) > 0 {
+		out["artifacts"] = st.Artifacts
+	}
 	if st.ActiveTask != "" {
 		if t, err := a.Store.GetTask(ctx, u.Scope, st.ActiveTask); err == nil {
 			out["task"] = taskView(t)
@@ -374,25 +480,5 @@ func (a *Agent) Reissue(ctx context.Context, u *User, id string, e Emitter) {
 		e.Emit("error", map[string]any{"message": "nothing to approve"})
 		return
 	}
-	hash := payloadHash(st.Proposal.Action, st.ArgsJSON, st.Uploads)
-	if st.Plan != nil {
-		hash = planHash(st.Plan)
-	}
-	if hash != st.PayloadHash {
-		e.Emit("error", map[string]any{"message": "the details changed; review again"})
-		return
-	}
-	tok, exp, err := a.Approvals.Issue(ctx, u.Scope, t.ID, hash)
-	if err != nil {
-		e.Emit("error", map[string]any{"message": a.plain(st.Lang, err)})
-		return
-	}
-	reasons := []map[string]string{}
-	if st.Decision != nil {
-		reasons = reasonTexts(st.Lang, st.Decision.Reasons)
-	}
-	e.Emit("preview", map[string]any{"action": st.Proposal.Action, "display": st.Proposal.Display, "preview": st.Proposal.Preview,
-		"notes": st.Proposal.Notes, "flags": st.Proposal.Flags, "decision": st.Decision, "reasons": reasons})
-	e.Emit("approval", map[string]any{"task_id": t.ID, "token": tok, "expires_at": exp, "payload_hash": hash, "reasons": reasons})
-	e.Emit("done", map[string]any{"task_id": t.ID, "stage": st.Stage})
+	a.reissueIn(ctx, u, t, st, e)
 }

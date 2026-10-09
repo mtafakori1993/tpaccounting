@@ -58,6 +58,17 @@ type Operation struct {
 	UIEntryPoints  []string `json:"ui_entry_points,omitempty"`
 	Critical       bool     `json:"critical,omitempty"`
 	Notes          []string `json:"notes,omitempty"`
+	// From the handler's call graph (posting.go): the operation writes accounting
+	// entries — always, or only when one of PostingTriggers is set in the request.
+	PostsEntries    bool     `json:"posts_entries,omitempty"`
+	PostingAlways   bool     `json:"posting_always,omitempty"`
+	PostingTriggers []string `json:"posting_triggers,omitempty"`
+	// FinancialDocument: the record is an accounting document with its own posting
+	// lifecycle (a draft invoice, journal entry, stock document …), even if this
+	// call does not post it yet.
+	FinancialDocument bool `json:"financial_document,omitempty"`
+	// UI: the real form for this call (uiforms.go), when the app has one.
+	UI *UIForm `json:"ui,omitempty"`
 }
 
 type UICall struct {
@@ -87,6 +98,8 @@ type pkg struct {
 	typeReqs map[string]map[string]bool
 	enums    map[string][]string // field name → allowed values (from v.Check(x == "a" || x == "b", "field", …))
 	imports  map[string]string   // per-package union: alias → dir name
+	// validators: per function, its unconditional required checks (see scanValidator)
+	validators []validatorInfo
 }
 
 var fset = token.NewFileSet()
@@ -144,66 +157,161 @@ func loadPkg(dir string) *pkg {
 			}
 		}
 		for _, d := range af.Decls {
-			// the input types of the function decide where its "required" checks apply
-			var inputs []string
-			if fd, ok := d.(*ast.FuncDecl); ok && fd.Type.Params != nil {
-				for _, f := range fd.Type.Params.List {
-					t := f.Type
-					if st, ok := t.(*ast.StarExpr); ok {
-						t = st.X
-					}
-					if id, ok := t.(*ast.Ident); ok && ast.IsExported(id.Name) {
-						inputs = append(inputs, id.Name)
-					}
-				}
+			if fd, ok := d.(*ast.FuncDecl); ok {
+				p.validators = append(p.validators, scanValidator(p, fd))
 			}
-			markReq := func(field string) {
-				if len(inputs) == 0 {
-					p.reqs[field] = true
-					return
-				}
-				for _, in := range inputs {
-					if p.typeReqs[in] == nil {
-						p.typeReqs[in] = map[string]bool{}
-					}
-					p.typeReqs[in][field] = true
-				}
-			}
-			ast.Inspect(d, func(n ast.Node) bool {
-				c, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				if sel, ok := c.Fun.(*ast.SelectorExpr); ok {
-					switch sel.Sel.Name {
-					case "Required", "RequiredID":
-						if len(c.Args) > 0 {
-							if s, ok := strLit(c.Args[0]); ok {
-								markReq(s)
-							}
-						}
-					case "Check":
-						if len(c.Args) == 3 {
-							if field, ok := strLit(c.Args[1]); ok {
-								if vals := enumValues(c.Args[0]); len(vals) > 1 {
-									p.enums[field] = mergeEnum(p.enums[field], vals)
-								}
-							}
-						}
-						if len(c.Args) == 3 {
-							if code, ok := strLit(c.Args[2]); ok && code == "required" {
-								if s, ok := strLit(c.Args[1]); ok {
-									markReq(s)
-								}
-							}
-						}
-					}
-				}
-				return true
-			})
 		}
 	}
+	p.resolveRequired()
 	return p
+}
+
+// validatorInfo is what one function says about required fields.
+type validatorInfo struct {
+	name   string
+	inputs []string        // exported parameter types (the input the checks apply to)
+	reqs   map[string]bool // fields this function requires UNCONDITIONALLY
+	calls  []string        // helper functions it calls unconditionally
+}
+
+// scanValidator collects the unconditional "required" checks of fd. A check is
+// conditional — and therefore NOT a required field — when it sits inside an if,
+// a switch/select case or a closure, or when its condition is a disjunction
+// (v.Check(method != "x" || field != "", "field", "required")): the field is
+// required only for some values of another field. Marking such fields required
+// made valid plans impossible (salary components: quantity_field/brackets/
+// insurance_share; the planner looped until it gave up). The app's 422 stays the
+// authority for conditional rules (D29).
+func scanValidator(p *pkg, fd *ast.FuncDecl) validatorInfo {
+	vi := validatorInfo{name: fd.Name.Name, reqs: map[string]bool{}}
+	if fd.Type.Params != nil {
+		for _, f := range fd.Type.Params.List {
+			t := f.Type
+			if st, ok := t.(*ast.StarExpr); ok {
+				t = st.X
+			}
+			if id, ok := t.(*ast.Ident); ok && ast.IsExported(id.Name) {
+				vi.inputs = append(vi.inputs, id.Name)
+			}
+		}
+	}
+	var stack []ast.Node
+	conditional := func() bool {
+		for _, n := range stack {
+			switch n.(type) {
+			case *ast.IfStmt, *ast.CaseClause, *ast.CommClause, *ast.FuncLit:
+				return true
+			}
+		}
+		return false
+	}
+	ast.Inspect(fd, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		defer func() { stack = append(stack, n) }()
+		c, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		cond := conditional()
+		if id, ok := c.Fun.(*ast.Ident); ok && !cond {
+			vi.calls = append(vi.calls, id.Name)
+		}
+		sel, ok := c.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		switch sel.Sel.Name {
+		case "Required", "RequiredID":
+			if len(c.Args) > 0 && !cond {
+				if s, ok := strLit(c.Args[0]); ok {
+					vi.reqs[s] = true
+				}
+			}
+		case "Check":
+			if len(c.Args) != 3 {
+				return true
+			}
+			if field, ok := strLit(c.Args[1]); ok {
+				if vals := enumValues(c.Args[0]); len(vals) > 1 {
+					p.enums[field] = mergeEnum(p.enums[field], vals)
+				}
+			}
+			if code, ok := strLit(c.Args[2]); ok && code == "required" && !cond && !isDisjunction(c.Args[0]) {
+				if s, ok := strLit(c.Args[1]); ok {
+					vi.reqs[s] = true
+				}
+			}
+		}
+		return true
+	})
+	return vi
+}
+
+func isDisjunction(e ast.Expr) bool {
+	for {
+		pe, ok := e.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		e = pe.X
+	}
+	b, ok := e.(*ast.BinaryExpr)
+	return ok && b.Op == token.LOR
+}
+
+// resolveRequired attributes each function's required fields to its input types,
+// including those of the untyped helpers it calls (checkEffective(v, …) called by
+// SaveTaxTable(in TaxTable) applies to TaxTable only — before, such a helper's
+// fields became required for EVERY type of the package). Helpers no typed
+// function calls keep the old package-wide meaning.
+func (p *pkg) resolveRequired() {
+	byName := map[string]*validatorInfo{}
+	for i := range p.validators {
+		byName[p.validators[i].name] = &p.validators[i]
+	}
+	usedByTyped := map[string]bool{}
+	var collect func(v *validatorInfo, out map[string]bool, seen map[string]bool)
+	collect = func(v *validatorInfo, out map[string]bool, seen map[string]bool) {
+		if seen[v.name] {
+			return
+		}
+		seen[v.name] = true
+		for f := range v.reqs {
+			out[f] = true
+		}
+		for _, c := range v.calls {
+			if h, ok := byName[c]; ok && len(h.inputs) == 0 {
+				usedByTyped[c] = true
+				collect(h, out, seen)
+			}
+		}
+	}
+	for i := range p.validators {
+		v := &p.validators[i]
+		if len(v.inputs) == 0 {
+			continue
+		}
+		reqs := map[string]bool{}
+		collect(v, reqs, map[string]bool{})
+		for _, in := range v.inputs {
+			if p.typeReqs[in] == nil {
+				p.typeReqs[in] = map[string]bool{}
+			}
+			for f := range reqs {
+				p.typeReqs[in][f] = true
+			}
+		}
+	}
+	for _, v := range p.validators {
+		if len(v.inputs) == 0 && !usedByTyped[v.name] {
+			for f := range v.reqs {
+				p.reqs[f] = true
+			}
+		}
+	}
 }
 
 func recvName(e ast.Expr) string {
@@ -537,9 +645,9 @@ func (e *env) addOp(method, path string, h ast.Expr, perm string) {
 	case *ast.FuncLit:
 		hname = "inline"
 	}
-	for k, f := range e.p.funcs {
+	for _, k := range sortedKeys(e.p.funcs) { // sorted: the same handler on every run
 		if strings.HasSuffix(k, "."+hname) || k == hname {
-			fd = f
+			fd = e.p.funcs[k]
 			break
 		}
 	}
@@ -549,6 +657,7 @@ func (e *env) addOp(method, path string, h ast.Expr, perm string) {
 	}
 	if fd != nil {
 		e.inspectHandler(&op, fd)
+		op.PostsEntries, op.PostingAlways, op.PostingTriggers = postingOf(e.p, fd)
 	}
 	ops = append(ops, op)
 }
@@ -809,7 +918,9 @@ func classify(op *Operation) {
 	case destructive:
 		op.Classification, op.Risk = "REQUIRES_APPROVAL", "high"
 		op.Notes = append(op.Notes, "cancel/delete/reverse: always approved by a human, never automatic")
-	case strings.HasPrefix(p, "/payroll") || strings.HasPrefix(p, "/employees") || (strings.HasPrefix(p, "/checks") && op.Kind == "workflow") ||
+	// D15: payroll, check and budget LIFECYCLE steps are always approved by a human.
+	// Employees are master data (HR records) and follow the ordinary rules (D40).
+	case strings.HasPrefix(p, "/payroll") || (strings.HasPrefix(p, "/checks") && op.Kind == "workflow") ||
 		(strings.HasPrefix(p, "/budgets") && op.Kind == "workflow"):
 		op.Classification, op.Risk = "REQUIRES_APPROVAL", "high"
 		op.Notes = append(op.Notes, "payroll, check and budget lifecycle steps are always approved by a human")
@@ -825,9 +936,40 @@ func classify(op *Operation) {
 			op.Notes = append(op.Notes, "password fields only accept \"$generate\": a temporary password is generated and shown once to the user")
 		}
 	}
-	// accounting impact (from the module's automatic accounting, see the accounting model guide)
+	// Posting triggers are request fields only (drop locals the condition also reads).
+	if len(op.PostingTriggers) > 0 {
+		names := map[string]bool{}
+		for _, f := range op.Body {
+			names[f.Name] = true
+		}
+		var kept []string
+		for _, t := range op.PostingTriggers {
+			if names[t] {
+				kept = append(kept, t)
+			}
+		}
+		op.PostingTriggers = kept
+		if len(kept) == 0 && op.PostsEntries {
+			op.PostingAlways = true // guarded only by internal state: treat as always posting
+		}
+	}
+	// accounting impact: whether the operation writes entries comes from the call graph
+	// (posting.go); the text below only describes the module's automatic accounting.
+	defer func() {
+		switch {
+		case !op.PostsEntries:
+			op.AccountingImp = ""
+		case op.AccountingImp == "":
+			op.AccountingImp = "writes accounting entries"
+		}
+		if op.PostsEntries && !op.PostingAlways && len(op.PostingTriggers) > 0 {
+			op.AccountingImp += " — only when " + strings.Join(op.PostingTriggers, " / ") + " is set"
+		}
+	}()
 	switch {
 	case op.Kind == "read" || op.Kind == "export" || op.Kind == "compute":
+	case strings.HasPrefix(p, "/treasury/accounts"):
+		op.AccountingImp = "opening entry for the opening balance (cash/bank vs opening equity)"
 	case strings.HasPrefix(p, "/treasury/transactions"):
 		op.AccountingImp = "posts a journal entry (cash/bank vs party or account); cancel = reversal entry"
 	case strings.HasPrefix(p, "/expenses") && (op.Action == "post" || op.Kind == "create"):
@@ -864,24 +1006,123 @@ func hasPrefixAny(s string, ps []string) bool {
 var callRe = regexp.MustCompile("(api\\.(get|post|put|del)|fetchPdf|downloadFile|useList)(<[^>()]*(\\([^)]*\\))?[^>()]*>)?\\(\\s*(['\"`][^'\"`]*['\"`]\\s*,\\s*)?['\"`]([^'\"`]+)['\"`]")
 var tmplRe = regexp.MustCompile(`\$\{[^}]*\}`)
 
-var rawRe = regexp.MustCompile("(?:fetch\\(\\s*[`'\"]/api/v1|path=\\{?\\s*[`'\"])(/[^`'\"\\s]+)[`'\"]")
+var rawRe = regexp.MustCompile("(?:fetch\\(\\s*[`'\"]/api/v1|href=\\{?\\s*[`'\"]/api/v1|path=\\{?\\s*[`'\"])(/[^`'\"\\s]+)[`'\"]")
 
 // const base = `/${side}/${kind}` — a path kept in a variable and used with api.*
 var varPathRe = regexp.MustCompile("(?:const|let)\\s+\\w+\\s*=\\s*[`'\"](/(?:\\$\\{[^}]+\\}|[a-z-]+)(?:/(?:\\$\\{[^}]+\\}|[a-z-]+))*)[`'\"]")
 
+// Variable API prefixes: a path built from typed values (api: `/${routeSide}/${routeKind}`
+// with routeSide: 'sales' | 'purchases') is expanded into its concrete paths instead of
+// being treated as a wildcard, which matched unrelated endpoints.
+var (
+	unionRe   = regexp.MustCompile(`(\w+)\??:\s*((?:'[a-z][\w-]*'\s*\|\s*)+'[a-z][\w-]*')`)
+	propDefRe = regexp.MustCompile("(\\w+):\\s*`(/[^`]*)`")
+	bareCall  = regexp.MustCompile(`api\.(get|post|put|del)(?:<[^>()]*>)?\(\s*([\w.]+)\s*[,)]`)
+	// useList(key, info.api, …): a list read whose path is a property
+	listCall = regexp.MustCompile(`useList(?:<[^>()]*>)?\(\s*[^,]+,\s*([\w.]+)\s*,`)
+	// a read helper wrapping api.get (useReport('/reports/journal', …)): any GET-shaped
+	// path literal passed as the first argument of a hook or helper
+	helperRead = regexp.MustCompile("\\b(use[A-Z]\\w*|load[A-Z]\\w*)(?:<[^>()]*(?:\\([^)]*\\))?[^>()]*>)?\\(\\s*[`'\"](/[a-z][^`'\"]*)[`'\"]")
+	exprRe     = regexp.MustCompile(`\$\{([^}]*)\}`)
+)
+
+type pathVars struct {
+	unions map[string][]string            // property name → literal values (first declaration)
+	local  map[string]map[string][]string // file → its own declarations (they win: `kind` differs per file)
+	defs   map[string]string              // property name → template path
+	file   string                         // the file being expanded
+}
+
+func scanPathVars(repo string) *pathVars {
+	pv := &pathVars{unions: map[string][]string{}, local: map[string]map[string][]string{}, defs: map[string]string{}}
+	_ = filepath.Walk(filepath.Join(repo, "frontend", "src"), func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !(strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".tsx")) {
+			return nil
+		}
+		b, _ := os.ReadFile(path)
+		for _, m := range unionRe.FindAllStringSubmatch(string(b), -1) {
+			var vals []string
+			for _, v := range strings.Split(m[2], "|") {
+				vals = append(vals, strings.Trim(strings.TrimSpace(v), "'"))
+			}
+			if _, ok := pv.unions[m[1]]; !ok {
+				pv.unions[m[1]] = vals
+			}
+			rel, _ := filepath.Rel(filepath.Join(repo, "frontend", "src"), path)
+			if pv.local[rel] == nil {
+				pv.local[rel] = map[string][]string{}
+			}
+			if _, ok := pv.local[rel][m[1]]; !ok {
+				pv.local[rel][m[1]] = vals
+			}
+		}
+		for _, m := range propDefRe.FindAllStringSubmatch(string(b), -1) {
+			if _, ok := pv.defs[m[1]]; !ok {
+				pv.defs[m[1]] = m[2]
+			}
+		}
+		return nil
+	})
+	return pv
+}
+
+func lastIdent(expr string) string {
+	expr = strings.TrimSpace(expr)
+	if i := strings.LastIndex(expr, "."); i >= 0 {
+		expr = expr[i+1:]
+	}
+	return expr
+}
+
+// expand resolves a template path into concrete paths ("{}" for unknown values).
+func (pv *pathVars) expand(tmpl string, depth int) []string {
+	if depth > 3 {
+		return []string{exprRe.ReplaceAllString(tmpl, "{}")}
+	}
+	loc := exprRe.FindStringSubmatchIndex(tmpl)
+	if loc == nil {
+		return []string{tmpl}
+	}
+	name := lastIdent(tmpl[loc[2]:loc[3]])
+	var subs []string
+	switch {
+	case loc[0] == 0 && pv.defs[name] != "":
+		subs = pv.expand(pv.defs[name], depth+1) // a path prefix held in a property
+	case len(pv.local[pv.file][name]) > 0:
+		subs = pv.local[pv.file][name]
+	case len(pv.unions[name]) > 0:
+		subs = pv.unions[name]
+	default:
+		subs = []string{"{}"}
+	}
+	var out []string
+	for _, sub := range subs {
+		out = append(out, pv.expand(tmpl[:loc[0]]+sub+tmpl[loc[1]:], depth+1)...)
+	}
+	return out
+}
+
 func uiCalls(repo string) []UICall {
 	var out []UICall
+	pv := scanPathVars(repo)
 	_ = filepath.Walk(filepath.Join(repo, "frontend", "src"), func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !(strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".tsx")) || strings.Contains(path, ".test.") {
 			return nil
 		}
 		b, _ := os.ReadFile(path)
 		rel, _ := filepath.Rel(filepath.Join(repo, "frontend", "src"), path)
+		pv.file = rel
 		for _, m := range callRe.FindAllStringSubmatch(string(b), -1) {
 			method := map[string]string{"api.get": "GET", "api.post": "POST", "api.put": "PUT", "api.del": "DELETE", "fetchPdf": "POST", "downloadFile": "GET", "useList": "GET"}[m[1]]
 			p := m[6]
 			if m[1] == "useList" && m[5] == "" {
 				continue // useList(key, path): the first literal is the cache key
+			}
+			if strings.HasPrefix(p, "${") && pv.defs[lastIdent(p[2:strings.Index(p, "}")])] != "" {
+				for _, x := range pv.expand(p, 0) {
+					out = append(out, UICall{Method: method, Path: strings.TrimRight(strings.SplitN(x, "?", 2)[0], "/"), File: rel})
+				}
+				continue
 			}
 			if strings.HasPrefix(p, "${") {
 				// `${base}/${id}/post`: a path prefix held in a variable → wildcard for leading segments
@@ -891,6 +1132,30 @@ func uiCalls(repo string) []UICall {
 			}
 			p = strings.SplitN(tmplRe.ReplaceAllString(p, "{}"), "?", 2)[0]
 			out = append(out, UICall{Method: method, Path: strings.TrimRight(p, "/"), File: rel})
+		}
+		// api.post(info.api, body): the path is a property holding a template
+		for _, m := range bareCall.FindAllStringSubmatch(string(b), -1) {
+			if def := pv.defs[lastIdent(m[2])]; def != "" {
+				method := map[string]string{"get": "GET", "post": "POST", "put": "PUT", "del": "DELETE"}[m[1]]
+				for _, x := range pv.expand(def, 0) {
+					out = append(out, UICall{Method: method, Path: strings.TrimRight(x, "/"), File: rel})
+				}
+			}
+		}
+		for _, m := range listCall.FindAllStringSubmatch(string(b), -1) {
+			if def := pv.defs[lastIdent(m[1])]; def != "" {
+				for _, x := range pv.expand(def, 0) {
+					out = append(out, UICall{Method: "GET", Path: strings.TrimRight(x, "/"), File: rel})
+				}
+			}
+		}
+		for _, m := range helperRead.FindAllStringSubmatch(string(b), -1) {
+			if m[1] == "useList" {
+				continue // handled above (the first literal is a cache key)
+			}
+			for _, x := range pv.expand(m[2], 0) {
+				out = append(out, UICall{Method: "GET", Path: strings.TrimRight(strings.SplitN(x, "?", 2)[0], "/"), File: rel})
+			}
 		}
 		// raw fetch('/api/v1/…') and <ServerExport path={`/…`}> style calls
 		for _, m := range rawRe.FindAllStringSubmatch(string(b), -1) {
@@ -942,13 +1207,45 @@ func main() {
 	repo := flag.String("repo", "../..", "repository root")
 	out := flag.String("out", "", "capabilities.json output")
 	md := flag.String("md", "", "markdown matrix output")
+	audit := flag.String("audit", "", "capability audit (markdown) output")
+	auditJ := flag.String("audit-json", "", "capability audit (JSON) output")
 	flag.Parse()
-	internalDir = filepath.Join(*repo, "backend", "internal")
+	cat, err := generate(*repo)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	final := cat.Operations
+	b, _ := json.MarshalIndent(cat, "", "  ")
+	if *out != "" {
+		_ = os.WriteFile(*out, b, 0o644)
+	} else {
+		os.Stdout.Write(b)
+	}
+	if *md != "" {
+		_ = os.WriteFile(*md, []byte(markdown(cat)), 0o644)
+	}
+	var rows []AuditRow
+	for _, o := range final {
+		rows = append(rows, auditOf(o))
+	}
+	if *audit != "" {
+		_ = os.WriteFile(*audit, []byte(coverageMarkdown(rows)), 0o644)
+	}
+	if *auditJ != "" {
+		_ = os.WriteFile(*auditJ, auditJSON(rows), 0o644)
+	}
+	fmt.Fprintf(os.Stderr, "capmap: %d operations, %d UI calls without backend\n", len(final), len(cat.UnmatchedUI))
+}
+
+// generate discovers the catalog from the repository's source.
+func generate(repo string) (Catalog, error) {
+	ops, pkgs, postMemo = nil, map[string]*pkg{}, map[fnKey]*postResult{}
+	internalDir = filepath.Join(repo, "backend", "internal")
 	srv := loadPkg("server")
 	fd := srv.funcs["New"]
 	if fd == nil {
-		fmt.Fprintln(os.Stderr, "server.New not found")
-		os.Exit(1)
+		return Catalog{}, fmt.Errorf("server.New not found")
 	}
 	root := &env{p: srv, vars: map[string]string{}, perms: map[string]string{}, pfuncs: map[string]string{}, recv: map[string]string{}, objs: map[string]objRef{}, module: "server"}
 	root.walk("", fd.Body.List, "")
@@ -977,7 +1274,29 @@ func main() {
 		op.ID = opID(op)
 		final = append(final, op)
 	}
-	calls := uiCalls(*repo)
+	// A financial document has a posting lifecycle: some operation on the same record
+	// (or this one) writes entries. Creating or editing one is not ordinary master data
+	// even before it is posted (D15).
+	for i := range final {
+		o := &final[i]
+		if o.Kind != "create" && o.Kind != "update" && o.Kind != "delete" {
+			continue
+		}
+		inst := o.Path
+		if o.Kind == "create" {
+			inst += "/{id}"
+		}
+		// a call that posts only when a field is set (an opening balance) does not make
+		// the record a document; its posting_triggers say when it posts
+		o.FinancialDocument = o.PostingAlways
+		for _, x := range final {
+			sub := strings.HasSuffix(inst, "}") && strings.HasPrefix(x.Path, inst+"/") // actions on the record, not a singleton's siblings
+			if x.PostsEntries && x.Method != "GET" && x.ID != o.ID && (x.Path == inst || sub) {
+				o.FinancialDocument = true
+			}
+		}
+	}
+	calls := uiCalls(repo)
 	for i := range final {
 		files := map[string]bool{}
 		for j, c := range calls {
@@ -991,6 +1310,10 @@ func main() {
 			final[i].UIEntryPoints = append(final[i].UIEntryPoints, f)
 		}
 		sort.Strings(final[i].UIEntryPoints)
+	}
+	fe := loadFrontend(repo)
+	for i := range final {
+		final[i].UI = fe.formFor(&final[i])
 	}
 	var unmatched []UICall
 	dedup := map[string]bool{}
@@ -1007,17 +1330,7 @@ func main() {
 		}
 		return final[i].Path+final[i].Method < final[j].Path+final[j].Method
 	})
-	cat := Catalog{Generated: "tafakor-ai/service/cmd/capmap (from backend/internal + frontend/src source)", Operations: final, UnmatchedUI: unmatched}
-	b, _ := json.MarshalIndent(cat, "", "  ")
-	if *out != "" {
-		_ = os.WriteFile(*out, b, 0o644)
-	} else {
-		os.Stdout.Write(b)
-	}
-	if *md != "" {
-		_ = os.WriteFile(*md, []byte(markdown(cat)), 0o644)
-	}
-	fmt.Fprintf(os.Stderr, "capmap: %d operations, %d UI calls without backend\n", len(final), len(unmatched))
+	return Catalog{Generated: "tafakor-ai/service/cmd/capmap (from backend/internal + frontend/src source)", Operations: final, UnmatchedUI: unmatched}, nil
 }
 
 // opID: stable tool name, e.g. parties.create, treasury.transactions.cancel, sales.{kind}.post
@@ -1057,7 +1370,7 @@ func opID(op Operation) string {
 func markdown(c Catalog) string {
 	var b strings.Builder
 	b.WriteString("# Capability map (generated from source)\n\n")
-	b.WriteString("Generated by `tafakor-ai/service/cmd/capmap` from `backend/internal` (routes, permissions, request structs, validators) and `frontend/src` (API calls). Do not edit by hand: `go run ./cmd/capmap -repo ../.. -out internal/catalog/capabilities.json -md ../CAPABILITIES.md`.\n\n")
+	b.WriteString("Generated by `tafakor-ai/service/cmd/capmap` from `backend/internal` (routes, permissions, request structs, validators) and `frontend/src` (API calls). Do not edit by hand: `go run ./cmd/capmap -repo ../.. -out internal/catalog/capabilities.json -md ../CAPABILITIES.md -audit ../CAPABILITY_AUDIT.md -audit-json internal/catalog/audit.json`.\n\n")
 	counts := map[string]int{}
 	for _, o := range c.Operations {
 		counts[o.Classification]++
@@ -1070,7 +1383,7 @@ func markdown(c Catalog) string {
 	sort.Strings(cl)
 	b.WriteString(strings.Join(cl, " · ") + "\n\n")
 	b.WriteString("Parity rule: the assistant can perform every operation the signed-in user can perform in the app, with the user's own permissions. " +
-		"`READ_ONLY` runs without asking; `REQUIRES_USER_CONFIRMATION` shows an approval card (receipts, payments and expenses may run automatically within the user's limits); " +
+		"`READ_ONLY` runs without asking; `REQUIRES_USER_CONFIRMATION` runs directly when the user asked for an ordinary master-data change that writes no accounting entry (D40), and otherwise shows a confirmation card (receipts, payments and expenses may run automatically within the user's limits); " +
 		"`REQUIRES_APPROVAL` always needs a human (critical ones — security, configuration, period control — carry a strong warning); " +
 		"`NOT_SUPPORTED_BY_AI` is limited to sign-in/sign-out/setup/own-password, which are session operations, not business operations.\n\n")
 	b.WriteString("| Module | Capability (tool) | Method & path | Human can do it (UI) | Backend exists | AI tool exists | AI can do it | Permission | Confirmation | Approval | Implementation missing | Inputs (required*) |\n|---|---|---|:-:|:-:|:-:|:-:|---|:-:|:-:|---|---|\n")

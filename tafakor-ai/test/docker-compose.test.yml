@@ -62,6 +62,9 @@ services:
       AI_ACCOUNTING_URL: http://app:8085
       OPENROUTER_PROXY_URL: ${TEST_OPENROUTER_PROXY_URL:-http://host.docker.internal:8118}
       AI_RATE_LIMIT_PER_MINUTE: 600
+      # live tests run on the low-cost default model unless overridden (TEST_OPENROUTER_MODEL)
+      OPENROUTER_MODEL: ${TEST_OPENROUTER_MODEL:-google/gemini-2.5-flash-lite}
+      OPENROUTER_VISION_MODEL: ${TEST_OPENROUTER_VISION_MODEL:-google/gemini-2.5-flash-lite}
     extra_hosts: ["host.docker.internal:host-gateway"]
     ports: ["127.0.0.1:${TEST_AI_PORT:-18090}:8090"]
     volumes: [testaidata:/data]
