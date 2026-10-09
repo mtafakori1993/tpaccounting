@@ -5,5 +5,5 @@ resources:
 # CI replaces newTag with the immutable commit SHA before applying.
 images:
   - name: tpaccounting
-    newName: gitlab.tafakorpardazan.ir:5050/root/tpaccounting
+    newName: gitlab.tafakorpardazan.ir:5050/tafakor-pardazan/tpaccounting
     newTag: main
