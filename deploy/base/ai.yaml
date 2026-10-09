@@ -1,0 +1,95 @@
+# Tafakor AI add-on: the same-origin assistant the app proxies under /ai-api/*.
+# The app reaches it as http://tafakor-ai:8090 (AI_SERVICE_URL in the configmap).
+# It calls back the accounting API as http://app:8085 and keeps its own state
+# (SQLite, uploads, audit) on the ai-data volume.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-data
+  namespace: tpaccounting
+  labels: {app: tpaccounting, component: ai, managed-by: gitlab-ci}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 1Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tafakor-ai
+  namespace: tpaccounting
+  labels: {app: tpaccounting, component: ai, managed-by: gitlab-ci}
+spec:
+  selector: {app: tpaccounting, component: ai}
+  ports: [{name: http, port: 8090, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tafakor-ai
+  namespace: tpaccounting
+  labels: {app: tpaccounting, component: ai, managed-by: gitlab-ci}
+spec:
+  replicas: 1   # state lives on a ReadWriteOnce volume: keep a single replica
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: tpaccounting, component: ai}
+  template:
+    metadata:
+      labels: {app: tpaccounting, component: ai}
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets: [{name: gitlab-registry}]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        fsGroup: 10002
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: tafakor-ai
+          image: tafakor-ai
+          ports: [{name: http, containerPort: 8090}]
+          env:
+            - {name: AI_PORT, value: "8090"}
+            - {name: AI_ACCOUNTING_URL, value: "http://app:8085"}
+            - {name: AI_NO_PROXY, value: "localhost,127.0.0.1,app,db,tafakor-ai"}
+            - {name: AI_RATE_LIMIT_PER_MINUTE, value: "30"}
+            - {name: AI_AUDIT_RETENTION_DAYS, value: "365"}
+            - {name: AI_APPROVAL_TTL_SECONDS, value: "600"}
+            - {name: MAX_UPLOAD_MB, value: "20"}
+            - {name: HOME, value: "/tmp"}
+            - {name: TZ, value: Asia/Tehran}
+            # Model access. Without OPENROUTER_API_KEY the assistant starts and the
+            # button appears, but every request answers "not configured yet".
+            - name: OPENROUTER_API_KEY
+              valueFrom: {secretKeyRef: {name: tpaccounting-secrets, key: OPENROUTER_API_KEY, optional: true}}
+            # Egress proxy for OpenRouter when the server cannot reach it directly.
+            # Empty = direct. May embed credentials: http://user:pass@host:port
+            - name: OPENROUTER_PROXY_URL
+              valueFrom: {secretKeyRef: {name: tpaccounting-secrets, key: OPENROUTER_PROXY_URL, optional: true}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          startupProbe:
+            httpGet: {path: /ai-api/healthz, port: http}
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: {path: /ai-api/healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /ai-api/healthz, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 5
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: ai-data}
+        - name: tmp
+          emptyDir: {sizeLimit: 256Mi}

@@ -29,3 +29,27 @@ spec:
         - podSelector: {matchLabels: {app: tpaccounting, component: app}}
         - podSelector: {matchLabels: {app: tpaccounting, component: backup}}
       ports: [{protocol: TCP, port: 5432}]
+---
+# The app proxies /ai-api/* to the assistant's Service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-app-to-ai, namespace: tpaccounting}
+spec:
+  podSelector: {matchLabels: {app: tpaccounting, component: ai}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app: tpaccounting, component: app}}
+      ports: [{protocol: TCP, port: 8090}]
+---
+# The assistant calls the accounting API back to carry the user's operations out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-ai-to-app, namespace: tpaccounting}
+spec:
+  podSelector: {matchLabels: {app: tpaccounting, component: app}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app: tpaccounting, component: ai}}
+      ports: [{protocol: TCP, port: 8085}]

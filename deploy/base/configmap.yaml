@@ -18,4 +18,7 @@ data:
   LOGIN_RATE_LIMIT_PER_MINUTE: "10"
   MAX_UPLOAD_MB: "20"
   STORAGE_DIR: /data/attachments
+  # Tafakor AI add-on: enable the /ai-api/* reverse proxy in the app (the button loads).
+  # Empty would disable the assistant and the button would never appear.
+  AI_SERVICE_URL: http://tafakor-ai:8090
   TZ: Asia/Tehran

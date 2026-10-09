@@ -7,3 +7,6 @@ images:
   - name: tpaccounting
     newName: gitlab.tafakorpardazan.ir:5050/tafakor-pardazan/tpaccounting
     newTag: main
+  - name: tafakor-ai
+    newName: gitlab.tafakorpardazan.ir:5050/tafakor-pardazan/tpaccounting/tafakor-ai
+    newTag: main

@@ -73,6 +73,17 @@ build:image:
       --frontend dockerfile.v0 --local context=. --local dockerfile=.
       --opt build-arg:HTTP_PROXY=$PROXY_URL --opt build-arg:HTTPS_PROXY=$PROXY_URL --opt build-arg:NO_PROXY=$NO_PROXY_LIST
       --output type=image,name=$IMAGE:main,push=true
+    # Tafakor AI add-on image (built from tafakor-ai/ as its own context).
+    - >
+      buildctl-daemonless.sh build
+      --frontend dockerfile.v0 --local context=tafakor-ai --local dockerfile=tafakor-ai
+      --opt build-arg:HTTP_PROXY=$PROXY_URL --opt build-arg:HTTPS_PROXY=$PROXY_URL --opt build-arg:NO_PROXY=$NO_PROXY_LIST
+      --output type=image,name=$IMAGE/tafakor-ai:$CI_COMMIT_SHA,push=true
+    - >
+      buildctl-daemonless.sh build
+      --frontend dockerfile.v0 --local context=tafakor-ai --local dockerfile=tafakor-ai
+      --opt build-arg:HTTP_PROXY=$PROXY_URL --opt build-arg:HTTPS_PROXY=$PROXY_URL --opt build-arg:NO_PROXY=$NO_PROXY_LIST
+      --output type=image,name=$IMAGE/tafakor-ai:main,push=true
 
 deploy:production:
   stage: deploy
@@ -95,4 +106,11 @@ deploy:production:
         kubectl -n tpaccounting rollout status deploy/app --timeout=180s || true
         exit 1
       fi
-    - kubectl -n tpaccounting get deploy,pods -l app=tpaccounting
+    - |
+      if ! kubectl -n tpaccounting rollout status deploy/tafakor-ai --timeout=300s; then
+        echo "AI rollout failed - rolling back to the previous revision"
+        kubectl -n tpaccounting rollout undo deploy/tafakor-ai
+        kubectl -n tpaccounting rollout status deploy/tafakor-ai --timeout=180s || true
+        exit 1
+      fi
+    - kubectl -n tpaccounting get deploy,svc,pods -l app=tpaccounting
