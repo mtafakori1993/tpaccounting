@@ -53,6 +53,12 @@ build:image:
   variables:
     BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
     DOCKER_CONFIG: /tmp/.docker
+    # Docker Hub's blob CDN geo-blocks this server (403), so BuildKit's OWN base-image
+    # pulls go through the operator's outbound proxy (this job only; never global).
+    # The build-args below cover the Dockerfile RUN steps; these env vars cover buildkitd.
+    HTTP_PROXY: $PROXY_URL
+    HTTPS_PROXY: $PROXY_URL
+    NO_PROXY: $NO_PROXY_LIST
   script:
     - mkdir -p "$DOCKER_CONFIG"
     - AUTH=$(printf 'gitlab-ci-token:%s' "$CI_JOB_TOKEN" | base64 | tr -d '\n')
