@@ -39,6 +39,16 @@ spec:
     spec:
       automountServiceAccountToken: false
       imagePullSecrets: [{name: gitlab-registry}]
+      # This network's resolvers return two Cloudflare address sets for
+      # openrouter.ai: the ones public DNS (CoreDNS -> 8.8.8.8) hands out
+      # (104.18.x.x) are geo-blocked here (HTTP 403), while the operator's
+      # resolver returns reachable ones (188.114.x.x, verified 200). Pin the
+      # reachable pair in the pod's /etc/hosts so the assistant can reach the
+      # API. If OpenRouter's anycast addresses change, update these two lines
+      # (or set OPENROUTER_PROXY_URL in tpaccounting-secrets to use a proxy).
+      hostAliases:
+        - {ip: 188.114.98.0, hostnames: [openrouter.ai]}
+        - {ip: 188.114.99.0, hostnames: [openrouter.ai]}
       securityContext:
         runAsNonRoot: true
         runAsUser: 10002
