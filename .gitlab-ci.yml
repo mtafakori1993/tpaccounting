@@ -16,7 +16,7 @@ variables:
   IMAGE: $CI_REGISTRY_IMAGE
   KUBE_IMAGE: alpine/k8s:1.36.4
   BUILDKIT_IMAGE: moby/buildkit:v0.23.0-rootless
-  PROXY_URL: http://130.185.123.6:3128
+  PROXY_URL: http://10.42.0.1:8118
   NO_PROXY_LIST: gitlab.tafakorpardazan.ir,.tafakorpardazan.ir,localhost,127.0.0.1,10.0.0.0/8,.svc,.cluster.local
 
 test:go:
