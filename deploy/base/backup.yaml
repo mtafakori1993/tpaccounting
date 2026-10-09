@@ -33,9 +33,11 @@ spec:
           automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
-            runAsUser: 70
-            runAsGroup: 70
-            fsGroup: 70
+            # Match the application's shared attachment-volume ownership. The
+            # pg_dump client does not need PostgreSQL's server UID (70).
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
             seccompProfile: {type: RuntimeDefault}
           containers:
             - name: backup
@@ -45,9 +47,20 @@ spec:
                 - |
                   umask 077
                   ts=$(date +%Y%m%d-%H%M%S)
-                  pg_dump -h postgres -U tpaccounting -d tpaccounting -Fc -f /backups/db-$ts.dump
-                  tar -C /data -czf /backups/attachments-$ts.tar.gz attachments
-                  find /backups -type f \( -name 'db-*.dump' -o -name 'attachments-*.tar.gz' \) -mtime +14 -delete
+                  # Allow time for the DB and newly-created pod's NetworkPolicy
+                  # membership to become ready before attempting the dump.
+                  for attempt in $(seq 1 60); do
+                    pg_isready -h postgres -U tpaccounting -d tpaccounting && break
+                    sleep 2
+                  done
+                  pg_isready -h postgres -U tpaccounting -d tpaccounting
+                  trap 'rm -f /backups/.db-'$ts'.partial /backups/.attachments-'$ts'.partial' EXIT
+                  pg_dump -h postgres -U tpaccounting -d tpaccounting -Fc -f /backups/.db-$ts.partial
+                  tar -C /data -czf /backups/.attachments-$ts.partial attachments
+                  mv /backups/.db-$ts.partial /backups/db-$ts.dump
+                  mv /backups/.attachments-$ts.partial /backups/attachments-$ts.tar.gz
+                  sha256sum /backups/db-$ts.dump /backups/attachments-$ts.tar.gz > /backups/checksums-$ts.sha256
+                  find /backups -type f \( -name 'db-*.dump' -o -name 'attachments-*.tar.gz' -o -name 'checksums-*.sha256' \) -mtime +14 -delete
                   ls -l /backups
               env:
                 - name: PGPASSWORD
